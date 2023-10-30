@@ -1,4 +1,4 @@
-;;; massmapper-lib.el -- Library for deianira and massmap -*- lexical-binding: t; nameless-current-name: "massmapper"; -*-
+;;; massmapper-lib.el -- Library for deianira and massmapper -*- lexical-binding: t; nameless-current-name: "massmapper"; -*-
 
 ;; (read-symbol-shorthands . '("massmapper-" . "massmapper-lib-"))
 

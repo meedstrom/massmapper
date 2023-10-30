@@ -19,7 +19,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.1.0
+;; Version: 0.1.1-pre
 ;; Keywords: abbrev convenience
 ;; Homepage: https://github.com/meedstrom/massmapper
 ;; Package-Requires: ((emacs "28.1") (dash "2.19.1"))
@@ -98,9 +98,9 @@ function simply returns its name."
          (error "Unable to identify: %s" def))))
 
 (defun massmapper-list-remaps ()
-  "List the key-bindings made so far by massmap."
+  "List the key-bindings made so far by massmapper."
   (interactive)
-  (let ((buf (get-buffer-create "*Massmap remaps*")))
+  (let ((buf (get-buffer-create "*Massmapper remaps*")))
     (with-current-buffer buf
       (setq tabulated-list-entries nil)
       (massmapper-list-remaps-mode)
@@ -784,7 +784,9 @@ See `massmapper-homogenizing-winners' for explanation."
    when action collect action))
 
 (defun massmapper-homogenize-keymaps ()
-  "Homogenize the keymaps newly seen since last call."
+  "Homogenize the keymaps newly seen since last call.
+For an explanation, search the readme of:
+https://github.com/meedstrom/deianira"
   (cl-loop
    for map in (-difference massmapper--known-keymaps
                            massmapper--homogenized-keymaps)
@@ -810,6 +812,7 @@ See `massmapper-homogenizing-winners' for explanation."
 
 ;;; Mode
 
+;;;###autoload
 (define-minor-mode massmapper-mode
   "Actively rebind keys in every keymap."
   :global t

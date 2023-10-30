@@ -7,11 +7,11 @@
 # notice and this notice are preserved.  This file is offered as-is,
 # without any warranty.
 
-[[https://img.shields.io/badge/license-GPL3+-blue.png]]
+# [[https://img.shields.io/badge/license-GPL3+-blue.png]]
 
 The long-absent Emacs facility to systematically remap key bindings.
 
-Ever wished you could just "remap Control to Super", in a way that doesn't make things weird?  Then you're in luck, that's exactly the kind of thing we do here.
+Ever wished you could just "remap Control to Super", in a way that doesn't make things weird?  Then you're in luck, that's the sort of thing we do here.
 
 * Install
 
@@ -74,4 +74,44 @@ Finally, turn it on by typing =M-x massmapper-mode RET=.
 
 To see what has been remapped, try =M-x massmapper-list-remaps RET=.
 
-If you're curious about inner workings, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
+If you're curious about inner workings, it may be nice to set =(setq massmapper-debug-level 2)= for a while.
+
+* Under the hood
+
+When you develop a package like this, you run into many gotchas.  I had to learn not to utilize command remappings such as =(define-key map [remap ...] command)= nor key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though these solutions seem clean.
+
+Instead, it just scans each and every keymap variable, such as =global-map=, =org-mode-map= and =projectile-mode-map=, and makes new key-bindings inside each, based on other key-bindings found within.  Brute-force, but works as intended 100% of the time.
+
+* Gotcha
+
+In your initfiles, you should probably place your =(massmapper-mode)= invocation somewhere /after/ all key-bindings are done.  After-init-hook is a good idea:
+
+: (add-hook 'after-init-hook #'massmapper-mode)
+
+This may sound like you should worry about key-bindings made inside =with-eval-after-load= and the like, but that's not a problem -- massmapper will work correctly.
+
+Unless, of course, you do something like this:
+
+#+begin_src elisp
+(with-eval-after-load 'eshell
+  (with-eval-after-load 'helm
+    (define-key global-map (kbd "M-r") #'helm-eshell-prompts-all)))
+#+end_src
+
+i.e. you add a binding to global-map only after eshell and helm load.
+
+This is not the way.  Bind your keys in each map as they come into existence, and don't touch them from then on.  For global-map, that means bind everything at init time.
+
+The above is better done as simply
+
+#+begin_src elisp
+(define-key global-map (kbd "M-r") #'helm-eshell-prompts-all)
+#+end_src
+
+and relying on autoloads to load Helm and Eshell for you.
+
+# I don't know if it will mirror correctly to everything bound through =(use-package :defer :bind)=, as I don't do things that way.
+
+# Thinking about it, I think it will work if you only use =:bind= for keymaps specific to the package being loaded, but if you also add things to global-map or other maps, then no.
+
+# It's possible I should make a =massmapper-refresh= command of some sort.
