@@ -76,19 +76,19 @@ To see what has been remapped, try =M-x massmapper-list-remaps RET=.
 
 If you're curious about inner workings, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
 
-* Under the hood
+*** Under the hood
 
 When you develop a package like this, you run into many gotchas.  I had to learn not to utilize command remappings such as =(define-key map [remap ...] command)= nor key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though these solutions seem clean.
 
 Instead, it just scans each and every keymap variable, such as =global-map=, =org-mode-map= and =projectile-mode-map=, and makes new key-bindings inside each, based on other key-bindings found within.  Brute-force, but works as intended 100% of the time.
 
-* Gotcha
+*** Gotcha
 
-In your initfiles, you should probably place your =(massmapper-mode)= invocation somewhere /after/ all key-bindings are done.  After-init-hook is a good idea:
+In your initfiles, you should probably place your =(massmapper-mode)= invocation somewhere /after/ all key-bindings are done.  If you don't have an excellent overview of your initfiles, after-init-hook is reasonable:
 
 : (add-hook 'after-init-hook #'massmapper-mode)
 
-This may sound like you should worry about key-bindings made inside =with-eval-after-load= and the like, but that's not a problem -- massmapper will work correctly.
+This may sound like you should worry about key-bindings made inside =with-eval-after-load= and the like, but that's not a problem -- Massmapper will work correctly.
 
 Unless, of course, you do something like this:
 
@@ -98,7 +98,7 @@ Unless, of course, you do something like this:
     (define-key global-map (kbd "M-r") #'helm-eshell-prompts-all)))
 #+end_src
 
-i.e. you add a binding to global-map only after eshell and helm load.
+i.e. you add a binding to global-map only after eshell and helm have loaded.
 
 This is not the way.  Bind your keys in each map as they come into existence, and don't touch them from then on.  For global-map, that means bind everything at init time.
 
@@ -108,10 +108,33 @@ The above is better done as simply
 (define-key global-map (kbd "M-r") #'helm-eshell-prompts-all)
 #+end_src
 
-and relying on autoloads to load Helm and Eshell for you.
+and letting built-in autoloads load Helm and Eshell.  Then things that inspect keymaps, such as this package, always have the correct idea.
 
-# I don't know if it will mirror correctly to everything bound through =(use-package :defer :bind)=, as I don't do things that way.
+------
 
-# Thinking about it, I think it will work if you only use =:bind= for keymaps specific to the package being loaded, but if you also add things to global-map or other maps, then no.
+It's possible I should make some sort of "=massmapper-refresh=" command for strange use cases -- TBD.  But consider doing different what you're doing.
 
-# It's possible I should make a =massmapper-refresh= command of some sort.
+*** Tip: Binding under the "old" prefix
+
+Even if you plan to stop using the Control key altogether in favour of Super, it can look clean to *bind only Control keys in your initfiles,* knowing that =massmapper-define-super-like-ctl= will copy everything to Super for you.
+
+Some advantages
+
+- you can predict exactly how your key definitions will interact with whatever bindings come built-in with your 9,000 installed packages
+- the Control key remains useful if Super has a service outage for any reason (like you install GNOME or you're in the TTY)
+
+There can be cases when you want a Super key to behave different from the Control key it was supposed to mirror.  In that case, simply bind it directly, and Massmapper will respect it.
+
+A typical example is =s-m=.  Since you cannot re-bind =C-m= without destroying your =RET= key, you would probably never re-bind =C-m=.  But you can bind =s-m= to anything you please!
+
+*** C-g is hardcoded
+
+Emacs hardcodes =C-g= as the "unfreeze Emacs" key, and some rare few functions like =map-y-or-n-p= ([[https://lists.gnu.org/archive/html/bug-gnu-emacs/2022-10/msg02195.html][bug report]]) also hardcode =C-g= as a "cancel" action.
+
+Unfortunately when Emacs freezes, nothing else than =C-g= will get it out of that state.  This package will dutifully copy the =keyboard-quit= command to =s-g= or wherever, which will work in many situations, but when Emacs is frozen, the keymaps aren't being looked up at all!
+
+I'm sure that many people through the ages have tried in good faith to bind =keyboard-quit= to =<escape>= or some such, only to give up eventually when they saw that the result wasn't consistent.  Others, like me, have learned to mentally separate "cancel" from "unfreeze".
+
+I surmise we can't remove =C-g= itself because of TTYs, but it should be possible to add /more/ keyboard interrupts.  To actually do so, we would need a compile-time option, which could maybe become a startup parameter or Lisp setting.
+
+Keymap variables cannot affect it, so there is nothing Massmapper can do.
