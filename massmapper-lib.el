@@ -36,6 +36,31 @@
   "List of strings matching key events unlikely to matter to the
 user's keyboard setup.")
 
+(defconst massmapper--modifier-regexp
+  (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-"))
+  "Regexp for any of the modifiers: \"C-\", \"M-\" etc.
+Upon match, the string segment it matched is always two characters long.
+
+Beware that it will also match a few obscure named function keys,
+such as <ns-drag-n-drop>, where it will match against s- in the
+ns- part.  To guard this, use `massmapper--modifier-regexp-safe'
+instead, although that has its own flaws.")
+
+(defconst massmapper--modifier-regexp-safe
+  (rx (or "<" "-" bol " ")
+      (or "A-" "C-" "H-" "M-" "S-" "s-"))
+  "Like `massmapper--modifier-regexp', but check a preceding character.
+Benefit: it will always match if there's at least one modifier,
+and not count spurious modifier-looking things such as
+<ns-drag-n-drop> which contains an \"s-\".
+
+Drawback: you can't match twice on the same string.  Look at the
+case of M-s-<down>: it'll match M-, but if the search continues
+from there, it will fail to match s- since it's only looking for
+s- preceded by a dash (i.e. \"-s-\"), and our second search
+starts past the first dash.  However, it's fine if you cut the
+string and start a new search on the cut string.")
+
 (defun massmapper--raw-keymap (map)
   "If MAP is a keymap, return it; if a symbol, evaluate first."
   (if (keymapp map)
