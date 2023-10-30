@@ -420,50 +420,50 @@ each KEY to COMMAND.
 These KEYs can technically be any key, but there's no reason to
 put in any keys that don't involve C-m or C-i.")
 
-;; WIP EXPERIMENTAL
-;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m...
-(defun massmapper--how-protect-ret-and-tab (mapsym)
-  "Experimental.
-In keymap MAP, look for bound control character representations
-of C-m and C-i, and copy their bindings onto the function keys
-<return> and <tab>.  This permits you to bind C-m and C-i to
-other commands under GUI Emacs without clobbering the Return and
-Tab keys' behavior.  Although you have to defer binding them by
-specifying them in `massmapper-ret-and-tab-bindings'."
-  (cl-loop
-   with actions = nil
-   with case-fold-search = nil
-   with reason = "Protect RET and TAB"
-   with raw-map = (massmapper--raw-keymap mapsym)
-   with retkeys = nil
-   with tabkeys = nil
-   for vec being the key-seqs of raw-map
-   as key = (key-description vec)
-   if (or (string-search "C-m" key)
-          (string-search "RET" key))
-   collect key into retkeys
-   else if (or (string-search "C-i" key)
-               (string-search "TAB" key))
-   collect key into tabkeys
-   do
-   finally do
+;; ;; WIP EXPERIMENTAL
+;; ;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m...
+;; (defun massmapper--how-protect-ret-and-tab (mapsym)
+;;   "Experimental.
+;; In keymap MAP, look for bound control character representations
+;; of C-m and C-i, and copy their bindings onto the function keys
+;; <return> and <tab>.  This permits you to bind C-m and C-i to
+;; other commands under GUI Emacs without clobbering the Return and
+;; Tab keys' behavior.  Although you have to defer binding them by
+;; specifying them in `massmapper-ret-and-tab-bindings'."
+;;   (cl-loop
+;;    with actions = nil
+;;    with case-fold-search = nil
+;;    with reason = "Protect RET and TAB"
+;;    with raw-map = (massmapper--raw-keymap mapsym)
+;;    with retkeys = nil
+;;    with tabkeys = nil
+;;    for vec being the key-seqs of raw-map
+;;    as key = (key-description vec)
+;;    if (or (string-search "C-m" key)
+;;           (string-search "RET" key))
+;;    collect key into retkeys
+;;    else if (or (string-search "C-i" key)
+;;                (string-search "TAB" key))
+;;    collect key into tabkeys
+;;    do
+;;    finally do
 
-   (cl-loop for retkey in retkeys
-            do (define-key raw-map
-                           (kbd (string-replace
-                                 "C-m" "<return>" (string-replace
-                                                   "RET" "<return>" retkey)))
-                           (lookup-key raw-map vec)))
-   (cl-loop for tabkey in tabkeys
-            do (define-key raw-map
-                           (kbd (string-replace
-                                 "C-i" "<tab>" (string-replace
-                                                "TAB" "<tab>" tabkey)))
-                           (lookup-key raw-map vec))))
-  (when (eq mapsym 'widget-global-map)
-    (setq mapsym 'global-map))
-  (cl-loop for x in (alist-get map massmapper-ret-and-tab-bindings)
-           do (define-key raw-map (kbd (car x)) (cdr x))))
+;;    (cl-loop for retkey in retkeys
+;;             do (define-key raw-map
+;;                            (kbd (string-replace
+;;                                  "C-m" "<return>" (string-replace
+;;                                                    "RET" "<return>" retkey)))
+;;                            (lookup-key raw-map vec)))
+;;    (cl-loop for tabkey in tabkeys
+;;             do (define-key raw-map
+;;                            (kbd (string-replace
+;;                                  "C-i" "<tab>" (string-replace
+;;                                                 "TAB" "<tab>" tabkey)))
+;;                            (lookup-key raw-map vec))))
+;;   (when (eq mapsym 'widget-global-map)
+;;     (setq mapsym 'global-map))
+;;   (cl-loop for x in (alist-get map massmapper-ret-and-tab-bindings)
+;;            do (define-key raw-map (kbd (car x)) (cdr x))))
 
 ;; (defun massmapper-protect-ret-and-tab ()
 ;;   (cl-loop
