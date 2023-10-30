@@ -1,4 +1,4 @@
-#+TITLE: massmap
+#+TITLE: Massmapper
 #+AUTHOR: Martin Edström
 #+EMAIL: meedstrom91@gmail.com
 #+LANGUAGE: en
@@ -9,35 +9,46 @@
 
 [[https://img.shields.io/badge/license-GPL3+-blue.png]]
 
-Fundamental setup (doesn't change your Emacs):
+The long-absent Emacs facility to systematically remap key bindings.
+
+To configure, add any of these hooks:
 
 #+begin_src elisp
-(require 'massmap)
-(add-hook 'window-buffer-change-functions #'massmap-record-keymap-maybe -70)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-super-like-ctl)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-super-like-ctlmeta)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-super-like-meta)
 #+end_src
 
-Optional setup:
+and any of:
 
 #+begin_src elisp
-(add-hook 'massmap-keymap-found-hook #'massmap-homogenize-all-keymaps))
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-alt-like-ctl)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-alt-like-ctlmeta)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-alt-like-meta)
 #+end_src
 
-and any of these:
+and any of:
 
 #+begin_src elisp
-(add-hook 'massmap-keymap-found-hook #'massmap-define-super-like-ctl)
-(add-hook 'massmap-keymap-found-hook #'massmap-define-super-like-ctlmeta)
-(add-hook 'massmap-keymap-found-hook #'massmap-define-super-like-meta)
-(add-hook 'massmap-keymap-found-hook #'massmap-define-alt-like-ctl)
-(add-hook 'massmap-keymap-found-hook #'massmap-define-alt-like-ctlmeta)
-(add-hook 'massmap-keymap-found-hook #'massmap-define-alt-like-meta)
-(add-hook 'massmap-keymap-found-hook #'massmap-define-hyper-like-ctl)
-(add-hook 'massmap-keymap-found-hook #'massmap-define-hyper-like-ctlmeta)
-(add-hook 'massmap-keymap-found-hook #'massmap-define-hyper-like-meta)
-(add-hook 'massmap-keymap-found-hook #'massmap-define-metasuper-like-ctlmeta)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-hyper-like-ctl)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-hyper-like-ctlmeta)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-hyper-like-meta)
 #+end_src
 
-Try also =M-x massmap-list-remaps RET= to see what has been remapped.  You can also try =(setq massmap-debug-level 2)=.
+and any of (experimental):
 
+#+begin_src elisp
+(add-hook 'massmapper-keymap-found-hook #'massmapper-define-metasuper-like-ctlmeta)
+#+end_src
 
-For a description of =massmap-homogenize-all-keymaps=, see https://github.com/meedstrom/deianira, for which it was made.
+and, for those of you coming here from [[https://github.com/meedstrom/deianira][Deianira]], this is the great homogenizer:
+
+#+begin_src elisp
+(add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize-keymaps -50)
+#+end_src
+
+(More options to come)
+
+Finally, turn it on by typing =M-x massmapper-mode RET=.
+
+To see what has been remapped, try =M-x massmapper-list-remaps RET=.  You can also debug further by evaluating =(setq massmapper-debug-level 2)=.
