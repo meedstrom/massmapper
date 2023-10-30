@@ -74,7 +74,7 @@ Finally, turn it on by typing =M-x massmapper-mode RET=.
 
 To see what has been remapped, try =M-x massmapper-list-remaps RET=.
 
-If you're curious about inner workings, it may be nice to set =(setq massmapper-debug-level 2)= for a while.
+If you're curious about inner workings, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
 
 * Under the hood
 
