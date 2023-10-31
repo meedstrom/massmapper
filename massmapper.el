@@ -29,7 +29,7 @@
 ;; Setup may go like this:
 
 ;; (require 'massmapper)
-;; (add-hook 'window-buffer-change-functions #'massmapper-record-keymap-maybe -70)
+;; (add-hook 'after-init-hook #'massmapper-mode)
 ;; (add-hook 'massmapper-keymap-found-hook #'massmapper-define-super-like-ctl)
 ;; (add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize-all-keymaps))
 
@@ -187,8 +187,7 @@ You may be interested in hooking some of these functions:
 or some of these EXPERIMENTAL! functions:
 
 - `massmapper-define-metasuper-like-ctlmeta'
-- `massmapper-protect-ret-and-tab'
-- `massmapper-unbind-illegal-keys'"
+- `massmapper-protect-ret-and-tab'"
   :type 'hook
   :group 'massmapper)
 
@@ -236,9 +235,9 @@ Suitable to hook on `window-buffer-change-functions' like this:
         ;; with `global-map' and removing `widget-global-map' in this step.  As
         ;; a bonus, user won't need to see and be puzzled by `widget-global-map'
         ;; in M-x massmapper-list-remaps.  These shenanigans wouldn't be necessary if
-        ;; keymap values contained their symbol names (and we could eliminate
-        ;; the function `help-fns-find-keymap-name'), which could be a
-        ;; suggestion for upstream.
+        ;; keymap values contained a canonical symbol name (and we could
+        ;; eliminate the function `help-fns-find-keymap-name'), but IDK if
+        ;; upstream would like that.
         (setq new-maps (remove 'widget-global-map new-maps))
 
         ;; Rare situation, and maybe it's only iedit that has this hack, but the
@@ -395,8 +394,7 @@ Duplicate all Control-Meta bindings to exist also on Meta-Super."
 
 
 ;;; Lightweight alternative to Super as Ctl: sanitize some control chars
-
-;; Experimental, completely untested!
+;; EXPERIMENTAL
 
 (defvar massmapper--tabret-protected-keymaps nil)
 
@@ -420,70 +418,76 @@ each KEY to COMMAND.
 These KEYs can technically be any key, but there's no reason to
 put in any keys that don't involve C-m or C-i.")
 
-;; ;; WIP EXPERIMENTAL
-;; ;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m...
-;; (defun massmapper--how-protect-ret-and-tab (mapsym)
-;;   "Experimental.
-;; In keymap MAP, look for bound control character representations
-;; of C-m and C-i, and copy their bindings onto the function keys
-;; <return> and <tab>.  This permits you to bind C-m and C-i to
-;; other commands under GUI Emacs without clobbering the Return and
-;; Tab keys' behavior.  Although you have to defer binding them by
-;; specifying them in `massmapper-ret-and-tab-bindings'."
-;;   (cl-loop
-;;    with actions = nil
-;;    with case-fold-search = nil
-;;    with reason = "Protect RET and TAB"
-;;    with raw-map = (massmapper--raw-keymap mapsym)
-;;    with retkeys = nil
-;;    with tabkeys = nil
-;;    for vec being the key-seqs of raw-map
-;;    as key = (key-description vec)
-;;    if (or (string-search "C-m" key)
-;;           (string-search "RET" key))
-;;    collect key into retkeys
-;;    else if (or (string-search "C-i" key)
-;;                (string-search "TAB" key))
-;;    collect key into tabkeys
-;;    do
-;;    finally do
+;; TODO: Also take care of C-M-m, C-H-m, C-s-m, C-S-m, C-H-M-S-s-m...
+(defun massmapper--how-protect-ret-and-tab (mapsym)
+  (cl-loop
+   with case-fold-search = nil
+   with raw-map = (massmapper--raw-keymap mapsym)
+   for vec being the key-seqs of raw-map using (key-bindings cmd)
+   as key = (key-description vec)
+   as modernized-key = (->> key
+                            (string-replace "C-m" "<return>")
+                            (string-replace "RET" "<return>")
+                            (string-replace "C-i" "<tab>")
+                            (string-replace "TAB" "<tab>")
+                            (string-replace "C-S-i" "S-<iso-lefttab>")
+                            (string-replace "C-I" "S-<iso-lefttab>"))
+   as action =
+   (unless (equal modernized-key key)
+     (let ((olddef (lookup-key-ignore-too-long raw-map (kbd modernized-key))))
+       (unless (equal cmd olddef)
+         (list :keydesc modernized-key
+               :cmd cmd
+               :map mapsym
+               :reason "Protect Return/Tab & free C-m/C-i"
+               :olddef (lookup-key-ignore-too-long raw-map (kbd modernized-key))))))
+   when action collect action))
 
-;;    (cl-loop for retkey in retkeys
-;;             do (define-key raw-map
-;;                            (kbd (string-replace
-;;                                  "C-m" "<return>" (string-replace
-;;                                                    "RET" "<return>" retkey)))
-;;                            (lookup-key raw-map vec)))
-;;    (cl-loop for tabkey in tabkeys
-;;             do (define-key raw-map
-;;                            (kbd (string-replace
-;;                                  "C-i" "<tab>" (string-replace
-;;                                                 "TAB" "<tab>" tabkey)))
-;;                            (lookup-key raw-map vec))))
-;;   (when (eq mapsym 'widget-global-map)
-;;     (setq mapsym 'global-map))
-;;   (cl-loop for x in (alist-get map massmapper-ret-and-tab-bindings)
-;;            do (define-key raw-map (kbd (car x)) (cdr x))))
+;; TODO: express as proper action to pass to `massmapper-remap-actions-execute'.
+(defun massmapper-rebind-Cm-Ci (mapsym)
+  (cl-loop
+   with raw-map = (massmapper--raw-keymap mapsym)
+   for (key . cmd) in (alist-get mapsym massmapper-ret-and-tab-bindings)
+   do (define-key raw-map (kbd key) cmd)))
 
-;; (defun massmapper-protect-ret-and-tab ()
-;;   (cl-loop
-;;    for map in (-difference massmapper--known-keymaps
-;;                            massmapper--tabret-protected-keymaps)
-;;    as start = (current-time)
-;;    as actions = (massmapper--how-protect-ret-and-tab map)
-;;    as overwritten = (cl-loop
-;;                      for action in actions
-;;                      when (string-search "overwrite" (plist-get action :reason))
-;;                      count action)
-;;    when actions do
-;;    (massmapper-remap-actions-execute actions)
-;;    (when (> massmapper-debug-level 0)
-;;      (message "(In %.3fs) Protected RET and TAB in %S: %d new bindings and %d overwrites"
-;;               (float-time (time-since start))
-;;               map
-;;               (- (length actions) overwritten)
-;;               overwritten))
-;;    do (push map massmapper--tabret-protected-keymaps)))
+;; EXPERIMENTAL
+(defun massmapper-protect-ret-and-tab ()
+  "Experimental.
+In every keymap, look for keys involving C-m or RET, and C-i or
+TAB, and copy their bindings onto the function keys <return> and
+<tab>.  This permits you to then bind C-m and C-i to other
+commands under GUI Emacs without clobbering the Return and Tab
+keys' behavior.
+
+Note that you have to defer binding your shiny new C-m and C-i
+commands by specifying them in `massmapper-ret-and-tab-bindings', not
+calling `define-key' yourself."
+  (interactive)
+  (cl-loop
+   for map in (-difference massmapper--known-keymaps
+                           massmapper--tabret-protected-keymaps)
+   as start = (current-time)
+   as actions = (massmapper--how-protect-ret-and-tab map)
+   as overwritten = (cl-loop
+                     for action in actions
+                     when (plist-get action :olddef)
+                     count action)
+   when actions do
+   (massmapper-remap-actions-execute actions)
+   (when (> massmapper-debug-level 0)
+     (message "(In %.3fs) Protected RET and TAB in %S: %d new bindings and %d overwrites"
+              (float-time (time-since start))
+              map
+              (- (length actions) overwritten)
+              overwritten))
+   (massmapper-rebind-Cm-Ci map)
+   do (push map massmapper--tabret-protected-keymaps)))
+
+;; To test:
+;; (setq foo (massmapper--how-protect-ret-and-tab 'global-map))
+;; (setq bar (massmapper--how-protect-ret-and-tab 'vertico-map))
+;; (massmapper-remap-actions-execute foo)
+;; (massmapper-remap-actions-execute bar)
 
 
 ;;; Homogenizing
@@ -514,6 +518,7 @@ named prefix command such as Control-X-prefix or
 kmacro-keymap (you can find these with `describe-function',
 whereas you can't find org-mode-map, as that's a proper mode
 map)."
+  ;; :type '(repeat (cons (choice key symbol) symbol))
   :type '(repeat (cons sexp symbol))
   :group 'massmapper
   :set
@@ -583,7 +588,7 @@ Keys involving one of these will be ignored by
 Control-chords as case-insensitive.
 
 In principle, we could permit capitals for other chords than
-Control -- file an issue if this interests you."
+Control -- email or file a GitHub issue if this interests you."
   :group 'massmapper
   :type '(repeat string))
 
@@ -783,7 +788,7 @@ See `massmapper-homogenizing-winners' for explanation."
      (massmapper--how-homogenize-key-in-keymap key map))
    when action collect action))
 
-(defun massmapper-homogenize-keymaps ()
+(defun massmapper-homogenize ()
   "Homogenize the keymaps newly seen since last call.
 For an explanation, search the readme of:
 https://github.com/meedstrom/deianira"
@@ -807,7 +812,10 @@ https://github.com/meedstrom/deianira"
    do (push map massmapper--homogenized-keymaps)))
 
 (define-obsolete-function-alias 'massmapper-homogenize-all-keymaps
-  'massmapper-homogenize-keymaps "2023-10-30")
+  'massmapper-homogenize "2023-10-30")
+
+(define-obsolete-function-alias 'massmapper-homogenize-keymaps
+  'massmapper-homogenize "2023-10-31")
 
 
 ;;; Mode

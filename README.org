@@ -60,6 +60,7 @@ and any of (experimental):
 
 #+begin_src elisp
 (add-hook 'massmapper-keymap-found-hook #'massmapper-define-metasuper-like-ctlmeta)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-protect-ret-and-tab)
 #+end_src
 
 and finally, for those of you coming here from [[https://github.com/meedstrom/deianira][Deianira]], this is the great homogenizer and Raison D'Etre:
