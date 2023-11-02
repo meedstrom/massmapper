@@ -82,7 +82,7 @@ Let's say want to stop using the Control key altogether in favour of Super.
 
 Even then, it can look clean to *bind only Control keys in your initfiles*, knowing that =massmapper-define-super-like-ctl= will copy everything to Super for you.
 
-I.e. keep referring to "C-..." instead of "s-...".
+I.e. to keep binding "C-" keys instead of "s-" keys.
 
 One advantage of doing so is that Control and Super perfectly mirror each other, useful in the event Super has a service outage for any reason, like you install GNOME or you enter the TTY, or you plug in on a keyboard that lacks a Right Super key but has a Right Control, or vice versa.
 
@@ -90,13 +90,24 @@ There can be cases when you want a Super key to behave different from the Contro
 
 A typical example is =s-m=.  Since you cannot re-bind =C-m= without destroying your =RET= key, you would probably never re-bind =C-m=.  But you can bind =s-m= to anything you please!
 
+Just mind that global-map is the lowest-priority keymap.  So if you want a new =s-m= that applies everywhere, you probably want to bind it in General's =general-override-mode-map= or using bind-key's =bind-key*=.
+
 *** Under the hood
 
-If you're curious about inner workings, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
+If you're curious about what the package does, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
 
-When you develop a package like this, you run into many gotchas.  I had to learn not to utilize command remappings such as =(define-key map [remap old-command] new-command)= nor key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though these solutions seem clean.  There are always edge cases.
+When you develop a package like this, you run into many gotchas.  I had to learn not to utilize command remappings such as =(define-key map [remap old-command] new-command)= nor key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though these solutions seem clean.
 
-Instead, Massmapper just scans each and every keymap variable, such as =global-map=, =org-mode-map= and =projectile-mode-map=, and makes new key-bindings inside each, based on other key-bindings found within.  Brute-force, but works as intended 100% of the time.  The only drawback is cluttering up the which-key popup.
+So what does Massmapper do?  It just scans each and every keymap variable, such as =global-map=, =org-mode-map= and =projectile-mode-map=, and makes new key-bindings inside each, based on other key-bindings found within.  Brute-force, but works as intended 100% of the time.
+
+# *** Tip: Declutter which-key after homogenize
+
+# #+begin_src elisp
+# ;; Hide any key sequence involving more than one chord.  We have no reason to
+# ;; see them after using `massmapper-homogenize'.
+# (with-eval-after-load 'which-key
+#   (cl-pushnew '((" .-." . nil) . t) which-key-replacement-alist))
+# #+end_src
 
 *** Gotcha: bind now, not later
 
@@ -138,18 +149,18 @@ Unfortunately when Emacs freezes, nothing else than =C-g= will get it out of tha
 
 I'm sure that many people through the ages have tried in good faith to bind =keyboard-quit= to =<escape>= or some such, only to give up eventually when they saw that the result wasn't consistent.
 
-I surmise we can't remove =C-g= itself because of TTYs, but it should be possible to add /more/ keyboard interrupts.  Emacs would probably need a compile-time option, which could maybe become a startup parameter or Lisp setting.
+I surmise we can't remove the =C-g= behavior from =C-g= itself because of TTYs, but it should be possible to add /more/ keyboard interrupts than just =C-g=.  Emacs would probably need a compile-time option, which could maybe become a startup parameter or Lisp setting.
 
 There is nothing Massmapper can do from within Emacs Lisp.
 
 *** Gotcha: C-g is sometimes a hardcoded "cancel-button"
-Aside from the above, some Emacs Lisp functions hardcode =C-g= as a "cancel" action, but this can usually be circumvented with a key-translation---which for your information, Massmapper won't do by default.  Basically this:
+Aside from the above, some Emacs Lisp functions hardcode =C-g= as a "cancel" action, but this can usually be circumvented with a key-translation---which for your information, Massmapper won't do by default.  This tends to do the trick:
 
 #+begin_src elisp
 (define-key input-decode-map (kbd "s-g") (kbd "C-g"))
 #+end_src
 
-In very rare cases, mainly =map-y-or-n-p= that I've seen, they [[https://lists.gnu.org/archive/html/bug-gnu-emacs/2022-10/msg02195.html][actually use read-event]] so that key-translations do nothing!  That's properly considered a bug and should be reported upstream.
+In very rare cases, mainly =map-y-or-n-p= that I've seen, a function [[https://lists.gnu.org/archive/html/bug-gnu-emacs/2022-10/msg02195.html][actually uses read-event]] so that key-translations do nothing!  That's properly considered a bug and should be reported upstream.
 
 *** Aside for developers
 
@@ -158,6 +169,7 @@ In very rare cases, mainly =map-y-or-n-p= that I've seen, they [[https://lists.g
 #+begin_src elisp
 (defvar-keymap my-map)
 (define-key my-map [remap keyboard-quit] #'my-keyboard-quit-wrapper)
+;; and this if my-map may be activated in a minibuffer
 (define-key my-map [remap abort-recursive-edit] #'my-abort-recursive-edit-wrapper)
 #+end_src
 
@@ -168,8 +180,10 @@ not this:
 (define-key my-map (kbd "C-g") #'my-special-cancel)
 #+end_src
 
-and if you must refer directly to a key in some custom interaction, definitely don't use =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations!  These are demon functions that should trigger warnings in package-lint and the like.
+and if you must refer directly to a key in some interaction, definitely don't use =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations!  These demon functions should trigger warnings in package-lint and the like.
 
-Use =read-key= or higher-level functions such as =read-char-choice=, =read-multiple-choice=, =read-answer=, =read-char-from-minibuffer=, =y-or-n-p= etc.  See the Info manual chapter "(elisp)Reading Input".
+The correct function is =read-key=, or higher-level functions such as =read-char-choice=, =read-multiple-choice=, =read-answer=, =read-char-from-minibuffer=, =y-or-n-p= etc.  See the Info manual chapter "(elisp)Reading Input".
 
-Note that the mentioned =my-keyboard-quit-wrapper= should probably call =keyboard-quit= itself at the end.  As an alternative, you can try to design your program in such a way that when a keyboard-quit comes, the right thing would happen automatically, but that's more art than science.
+Note that your imaginary =my-keyboard-quit-wrapper= should probably call =keyboard-quit= itself at the end.
+
+As an alternative, you can try to design your program in such a way that when a keyboard-quit comes, the right thing would happen automatically, but that's more art than science.
