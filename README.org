@@ -78,13 +78,13 @@ To see what has been remapped, try =M-x massmapper-list-remaps RET=.
 * Appendix
 *** Tip: Binding under the "old" prefix
 
-Let's say want to stop using the Control key altogether in favour of Super.
+Let's say you want to stop using the Control key altogether in favour of Super.
 
 Even then, it can look clean to *bind only Control keys in your initfiles*, knowing that =massmapper-define-super-like-ctl= will copy everything to Super for you.
 
 I.e. to keep binding "C-" keys instead of "s-" keys.
 
-One advantage of doing so is that Control and Super perfectly mirror each other, useful in the event Super has a service outage for any reason, like you install GNOME or you enter the TTY, or you plug in on a keyboard that lacks a Right Super key but has a Right Control, or vice versa.
+One advantage of doing so is that Control and Super then perfectly mirror each other, useful in the event Super has a service outage for any reason, like you install GNOME or you enter the TTY, or you plug in on a keyboard that lacks a Right Super key but has a Right Control, or vice versa.
 
 There can be cases when you want a Super key to behave different from the Control key it was supposed to mirror.  In that case, simply bind it directly, and Massmapper will respect it.
 
@@ -94,9 +94,9 @@ Just mind that global-map is the lowest-priority keymap.  So if you want a new =
 
 *** Under the hood
 
-If you're curious about what the package does, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
+If you're curious about what the package does to your Emacs, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
 
-When you develop a package like this, you run into many gotchas.  I had to learn not to utilize command remappings such as =(define-key map [remap old-command] new-command)= nor key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though these solutions seem clean.
+When you develop a package like this, you run into many gotchas.  I had to learn not to utilize key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though they seem clean.
 
 So what does Massmapper do?  It just scans each and every keymap variable, such as =global-map=, =org-mode-map= and =projectile-mode-map=, and makes new key-bindings inside each, based on other key-bindings found within.  Brute-force, but works as intended 100% of the time.
 
@@ -117,7 +117,7 @@ In your initfiles, it's safest to place your =(massmapper-mode)= invocation some
 
 This may sound like you should worry about key-bindings made inside =with-eval-after-load= and the like, but that's not a problem -- Massmapper will work correctly.
 
-Unless, of course, you do something like this:
+Unless you do something like this:
 
 #+begin_src elisp
 (with-eval-after-load 'eshell
@@ -127,7 +127,7 @@ Unless, of course, you do something like this:
 
 i.e. you add a binding to global-map only after eshell and helm have loaded.
 
-This is not the way.  Bind your keys in each map as they come into existence, and don't touch them from then on.  For global-map, that means bind everything at init time.
+This is not the way.  Bind your keys in each map /as they come into existence/, and don't touch them from then on.  For global-map, that means bind everything at init time!
 
 The above is better done as simply
 
@@ -137,9 +137,9 @@ The above is better done as simply
 
 and letting built-in autoloads load Helm and Eshell.  Then things that inspect keymaps, such as this package, always have the correct idea.
 
-------
+# ------
 
-It's possible I should make some sort of "=massmapper-refresh=" command for strange use cases -- TBD.  But consider doing different what you're doing.
+# It's possible I should make some sort of "=massmapper-refresh=" command for strange use cases -- TBD.  But consider doing different what you're doing.
 
 *** Gotcha: C-g is a hardcoded "unfreeze Emacs"
 
@@ -169,7 +169,7 @@ In very rare cases, mainly =map-y-or-n-p= that I've seen, a function [[https://l
 #+begin_src elisp
 (defvar-keymap my-map)
 (define-key my-map [remap keyboard-quit] #'my-keyboard-quit-wrapper)
-;; and this if my-map may be activated in a minibuffer
+;; if my-map may be activated in a minibuffer
 (define-key my-map [remap abort-recursive-edit] #'my-abort-recursive-edit-wrapper)
 #+end_src
 
@@ -180,7 +180,8 @@ not this:
 (define-key my-map (kbd "C-g") #'my-special-cancel)
 #+end_src
 
-and if you must refer directly to a key in some interaction, definitely don't use =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations!  These demon functions should trigger warnings in package-lint and the like.
+If you must refer directly to a key in some custom interaction, definitely don't use =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations!  These demon functions should trigger warnings in package-lint and the like.
+# (but really, =use-local-map= and =set-transient-map= often work well)
 
 The correct function is =read-key=, or higher-level functions such as =read-char-choice=, =read-multiple-choice=, =read-answer=, =read-char-from-minibuffer=, =y-or-n-p= etc.  See the Info manual chapter "(elisp)Reading Input".
 
