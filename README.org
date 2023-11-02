@@ -11,7 +11,7 @@
 
 The long-absent Emacs facility to systematically remap key bindings.
 
-Ever wished you could just "remap Control to Super", in a way that doesn't make things weird?  Then you're in luck, that's the sort of thing we do here.
+Ever wished you could just "remap Control to Super", in a way that feels consistent?  Then you're in luck.
 
 * Install
 
@@ -63,13 +63,11 @@ and any of (experimental):
 (add-hook 'massmapper-keymap-found-hook #'massmapper-protect-ret-and-tab)
 #+end_src
 
-and finally, for those of you coming here from [[https://github.com/meedstrom/deianira][Deianira]], this is the great homogenizer and Raison D'Etre:
+and finally, for those of you coming here from [[https://github.com/meedstrom/deianira][Deianira]], the raison d'etre:
 
 #+begin_src elisp
-(add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize-keymaps -50)
+(add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize -50)
 #+end_src
-
-(More options to come)
 
 Finally, turn it on by typing =M-x massmapper-mode RET=.
 
@@ -84,7 +82,7 @@ Even then, it can look clean to *bind only Control keys in your initfiles*, know
 
 I.e. to keep binding "C-" keys instead of "s-" keys.
 
-One advantage of doing so is that Control and Super then perfectly mirror each other, useful in the event Super has a service outage for any reason, like you install GNOME or you enter the TTY, or you plug in on a keyboard that lacks a Right Super key but has a Right Control, or vice versa.
+One advantage of doing so is that Control and Super then perfectly mirror each other, useful in the event Super has a service outage for any reason, like you install GNOME or you enter the TTY, or you plug in on a keyboard that lacks a Right Super key but has a Right Control.
 
 There can be cases when you want a Super key to behave different from the Control key it was supposed to mirror.  In that case, simply bind it directly, and Massmapper will respect it.
 
@@ -96,9 +94,9 @@ Just mind that global-map is the lowest-priority keymap.  So if you want a new =
 
 If you're curious about what the package does to your Emacs, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
 
-When you develop a package like this, you run into many gotchas.  I had to learn not to utilize key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though they seem clean.
+When you develop a package like this, you run into many gotchas.  I learned not to utilize key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though they seem like a clean solution.
 
-So what does Massmapper do?  It just scans each and every keymap variable, such as =global-map=, =org-mode-map= and =projectile-mode-map=, and makes new key-bindings inside each, based on other key-bindings found within.  Brute-force, but works as intended 100% of the time.
+So what does Massmapper do?  It scans each and every keymap variable, such as =global-map=, =org-mode-map= and =projectile-mode-map=, and makes new key-bindings inside each, based on other key-bindings found within.  Brute-force, but works as intended 100% of the time.
 
 # *** Tip: Declutter which-key after homogenize
 
@@ -136,10 +134,6 @@ The above is better done as simply
 #+end_src
 
 and letting built-in autoloads load Helm and Eshell.  Then things that inspect keymaps, such as this package, always have the correct idea.
-
-# ------
-
-# It's possible I should make some sort of "=massmapper-refresh=" command for strange use cases -- TBD.  But consider doing different what you're doing.
 
 *** Gotcha: C-g is a hardcoded "unfreeze Emacs"
 
@@ -180,10 +174,9 @@ not this:
 (define-key my-map (kbd "C-g") #'my-special-cancel)
 #+end_src
 
-If you must refer directly to a key in some custom interaction, definitely don't use =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations!  These demon functions should trigger warnings in package-lint and the like.
-# (but really, =use-local-map= and =set-transient-map= often work well)
+If you must refer directly to a key in some custom interaction, don't use =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations!
 
-The correct function is =read-key=, or higher-level functions such as =read-char-choice=, =read-multiple-choice=, =read-answer=, =read-char-from-minibuffer=, =y-or-n-p= etc.  See the Info manual chapter "(elisp)Reading Input".
+Use =read-key=, or higher-level functions such as =read-char-choice=, =read-multiple-choice=, =read-answer=, =read-char-from-minibuffer=, =y-or-n-p= etc.  See the Info manual chapter "(elisp)Reading Input".
 
 Note that your imaginary =my-keyboard-quit-wrapper= should probably call =keyboard-quit= itself at the end.
 
