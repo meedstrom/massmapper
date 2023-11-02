@@ -75,17 +75,17 @@ Finally, turn it on by typing =M-x massmapper-mode RET=.
 
 To see what has been remapped, try =M-x massmapper-list-remaps RET=.
 
-If you're curious about inner workings, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
-
 *** Under the hood
 
-When you develop a package like this, you run into many gotchas.  I had to learn not to utilize command remappings such as =(define-key map [remap ...] command)= nor key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though these solutions seem clean.
+If you're curious about inner workings, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
 
-Instead, it just scans each and every keymap variable, such as =global-map=, =org-mode-map= and =projectile-mode-map=, and makes new key-bindings inside each, based on other key-bindings found within.  Brute-force, but works as intended 100% of the time.
+When you develop a package like this, you run into many gotchas.  I had to learn not to utilize command remappings such as =(define-key map [remap old-command] new-command)= nor key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though these solutions seem clean.  There are always edge cases.
+
+Instead, Massmapper just scans each and every keymap variable, such as =global-map=, =org-mode-map= and =projectile-mode-map=, and makes new key-bindings inside each, based on other key-bindings found within.  Brute-force, but works as intended 100% of the time.  The only drawback is cluttering up the which-key popup.
 
 *** Gotcha
 
-In your initfiles, you should probably place your =(massmapper-mode)= invocation somewhere /after/ all key-bindings are done.  If you don't have an excellent overview of your initfiles, after-init-hook is reasonable:
+In your initfiles, it's safest to place your =(massmapper-mode)= invocation somewhere /after/ all key-bindings are done.  If you don't have an excellent overview of your initfiles, after-init-hook is reasonable:
 
 : (add-hook 'after-init-hook #'massmapper-mode)
 
@@ -117,25 +117,56 @@ It's possible I should make some sort of "=massmapper-refresh=" command for stra
 
 *** Tip: Binding under the "old" prefix
 
-Even if you plan to stop using the Control key altogether in favour of Super, it can look clean to *bind only Control keys in your initfiles,* knowing that =massmapper-define-super-like-ctl= will copy everything to Super for you.
+Let's say you plan to stop using the Control key altogether in favour of Super.
 
-Some advantages
+Even then, it can look clean to *bind only Control keys in your initfiles*, knowing that =massmapper-define-super-like-ctl= will copy everything to Super for you.
 
-- you can predict exactly how your key definitions will interact with whatever bindings come built-in with your 9,000 installed packages
-- the Control key remains useful if Super has a service outage for any reason (like you install GNOME or you're in the TTY)
+An advantage is that you keep Control useful in the event Super has a service outage for any reason (like you install GNOME or you're in the TTY), or you get on a keyboard that lacks a Right Super key but has a Right Control, or vice versa.
 
 There can be cases when you want a Super key to behave different from the Control key it was supposed to mirror.  In that case, simply bind it directly, and Massmapper will respect it.
 
 A typical example is =s-m=.  Since you cannot re-bind =C-m= without destroying your =RET= key, you would probably never re-bind =C-m=.  But you can bind =s-m= to anything you please!
 
-*** C-g is hardcoded
+*** C-g is a hardcoded "unfreeze Emacs"
 
-Emacs hardcodes =C-g= as the "unfreeze Emacs" key, and some rare few functions like =map-y-or-n-p= ([[https://lists.gnu.org/archive/html/bug-gnu-emacs/2022-10/msg02195.html][bug report]]) also hardcode =C-g= as a "cancel" action.
+Emacs hardcodes =C-g= as the "unfreeze Emacs" key.
 
-Unfortunately when Emacs freezes, nothing else than =C-g= will get it out of that state.  This package will dutifully copy the =keyboard-quit= command to =s-g= or wherever, which will work in many situations, but when Emacs is frozen, the keymaps aren't being looked up at all!
+Unfortunately when Emacs freezes, nothing else than =C-g= will get it out of that state.  This package will dutifully copy the =keyboard-quit= command to =s-g= or wherever, but when Emacs is frozen, the keymaps aren't being looked up at all!
 
-I'm sure that many people through the ages have tried in good faith to bind =keyboard-quit= to =<escape>= or some such, only to give up eventually when they saw that the result wasn't consistent.  Others, like me, have learned to mentally separate "cancel" from "unfreeze".
+I'm sure that many people through the ages have tried in good faith to bind =keyboard-quit= to =<escape>= or some such, only to give up eventually when they saw that the result wasn't consistent.
 
-I surmise we can't remove =C-g= itself because of TTYs, but it should be possible to add /more/ keyboard interrupts.  To actually do so, we would need a compile-time option, which could maybe become a startup parameter or Lisp setting.
+I surmise we can't remove =C-g= itself because of TTYs, but it should be possible to add /more/ keyboard interrupts.  Emacs would probably need a compile-time option, which could maybe become a startup parameter or Lisp setting.
 
-Keymap variables cannot affect it, so there is nothing Massmapper can do.
+There is nothing Massmapper can do from within Emacs Lisp.
+
+*** C-g is sometimes a hardcoded "cancel-button"
+Aside from the above, some Emacs Lisp functions hardcode =C-g= as a "cancel" action, but this can usually be circumvented with a key-translation---which for your information, Massmapper won't do by default.  Basically this:
+
+#+begin_src elisp
+(define-key input-decode-map (kbd "s-g") (kbd "C-g"))
+#+end_src
+
+In very rare cases, mainly =map-y-or-n-p= that I've seen, they [[https://lists.gnu.org/archive/html/bug-gnu-emacs/2022-10/msg02195.html][actually use read-event]] so that key-translations do nothing!  That's properly considered a bug and should be reported upstream.
+
+**** Aside for developers
+
+*If you're an Emacs Lisp programmer* wondering what's the appropriate thing to do instead of referring to =C-g=, it's to create a minor or major mode map and just remap =keyboard-quit= in there, making no assumption about what the user has on C-g or where =keyboard-quit= may be. I.e. do this:
+
+#+begin_src elisp
+(defvar-keymap my-map)
+(define-key my-map [remap keyboard-quit] #'my-keyboard-quit-wrapper)
+(define-key my-map [remap abort-recursive-edit] #'my-abort-recursive-edit-wrapper)
+#+end_src
+
+not this:
+
+#+begin_src elisp
+(defvar-keymap my-map)
+(define-key my-map (kbd "C-g") #'my-special-cancel)
+#+end_src
+
+and definitely don't use =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations.  These are demon functions that should trigger warnings in package-lint and the like.
+
+Use =read-key= or higher-level functions such as =read-char-choice=, =read-multiple-choice=, =read-answer=, =read-char-from-minibuffer=, =y-or-n-p= etc.  See the Info manual chapter "(elisp)Reading Input".
+
+Note that your function =my-keyboard-quit-wrapper= should probably call =keyboard-quit= itself at the end.  As an alternative, you can try to design your program in such a way that when a keyboard-quit comes, the right thing would happen automatically, but that's more art than science.
