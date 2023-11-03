@@ -189,6 +189,18 @@ or some of these EXPERIMENTAL! functions:
 - `massmapper-define-metasuper-like-ctlmeta'
 - `massmapper-protect-ret-and-tab'"
   :type 'hook
+  :options '(massmapper-homogenize
+             massmapper-define-super-like-ctl
+             massmapper-define-super-like-ctlmeta
+             massmapper-define-super-like-meta
+             massmapper-define-alt-like-ctl
+             massmapper-define-alt-like-ctlmeta
+             massmapper-define-alt-like-meta
+             massmapper-define-hyper-like-ctl
+             massmapper-define-hyper-like-ctlmeta
+             massmapper-define-hyper-like-meta
+             massmapper-define-metasuper-like-ctlmeta
+             massmapper-protect-ret-and-tab)
   :group 'massmapper)
 
 (defvar massmapper--known-keymaps '(global-map)
@@ -300,9 +312,9 @@ Suitable to hook on `window-buffer-change-functions' like this:
 
 ;;; Reflecting one stem in another
 
-(defun massmapper--how-define-a-like-b-in-keymap (recipient-mod donor-mod mapsym)
+(defun massmapper--how-define-a-like-b-in-keymap (recipient-mod donor-mod map)
   "Return actions needed to clone one set of keys to another set.
-Inside keymap MAPSYM, take all keys and key sequences that contain
+Inside keymap MAP, take all keys and key sequences that contain
 DONOR-MOD \(a substring such as \"C-\"\), replace the substring
 wherever it occurs in favor of RECIPIENT-MOD \(a substring such
 as \"H-\"\), and assign them to the same commands.
@@ -313,7 +325,7 @@ even if they also contain DONOR-MOD."
    with actions = nil
    with case-fold-search = nil
    with reason = (concat "Define " recipient-mod " like " donor-mod)
-   with raw-map = (massmapper--raw-keymap mapsym)
+   with raw-map = (massmapper--raw-keymap map)
    for vec being the key-seqs of raw-map using (key-bindings cmd)
    as key = (key-description vec)
    when (and cmd
@@ -322,10 +334,10 @@ even if they also contain DONOR-MOD."
    do (let ((recipient (string-replace donor-mod recipient-mod key)))
         (if (lookup-key-ignore-too-long raw-map (kbd recipient))
             (and (> massmapper-debug-level 0)
-                 (message "User bound key, leaving it alone: %s in %S" recipient mapsym))
+                 (message "User bound key, leaving it alone: %s in %S" recipient map))
           (push (list :keydesc recipient
                       :cmd cmd
-                      :map mapsym
+                      :map map
                       :reason reason
                       :olddef nil) actions)))
    finally return actions))
@@ -335,12 +347,12 @@ even if they also contain DONOR-MOD."
 (defun massmapper--define-a-like-b-everywhere (recipient-mod donor-mod)
   "Copy all bindings starting with DONOR-MOD to RECIPIENT-MOD."
   (cl-loop
-   for mapsym in (-difference massmapper--known-keymaps
-                              (alist-get recipient-mod
-                                         massmapper--reflected-maps-per-mod))
+   for map in (-difference massmapper--known-keymaps
+                           (alist-get recipient-mod
+                                      massmapper--reflected-maps-per-mod))
    as start = (current-time)
    as actions = (massmapper--how-define-a-like-b-in-keymap
-                 recipient-mod donor-mod mapsym)
+                 recipient-mod donor-mod map)
    when actions do
    (massmapper-execute actions)
    (when (> massmapper-debug-level 0)
@@ -349,50 +361,50 @@ even if they also contain DONOR-MOD."
       (float-time (time-since start))
       donor-mod
       recipient-mod
-      mapsym
+      map
       (length actions)))
-   do (push mapsym (alist-get recipient-mod
-                              massmapper--reflected-maps-per-mod))))
+   do (push map (alist-get recipient-mod
+                           massmapper--reflected-maps-per-mod))))
 
 (defun massmapper-define-super-like-ctl ()
-  "Duplicate all Control bindings to exist also on Super."
+  "Copy all Control bindings so they exist also on Super."
   (massmapper--define-a-like-b-everywhere "s-" "C-"))
 
 (defun massmapper-define-super-like-ctlmeta ()
-  "Duplicate all Control-Meta bindings to exist also on Super."
+  "Copy all Control-Meta bindings so they exist also on Super."
   (massmapper--define-a-like-b-everywhere "s-" "C-M-"))
 
 (defun massmapper-define-super-like-meta ()
-  "Duplicate all Meta bindings to exist also on Super."
+  "Copy all Meta bindings so they exist also on Super."
   (massmapper--define-a-like-b-everywhere "s-" "M-"))
 
 (defun massmapper-define-hyper-like-ctl ()
-  "Duplicate all Control bindings to exist also on Hyper."
+  "Copy all Control bindings so they exist also on Hyper."
   (massmapper--define-a-like-b-everywhere "H-" "C-"))
 
 (defun massmapper-define-hyper-like-ctlmeta ()
-  "Duplicate all Control-Meta bindings to exist also on Hyper."
+  "Copy all Control-Meta bindings so they exist also on Hyper."
   (massmapper--define-a-like-b-everywhere "H-" "C-M-"))
 
 (defun massmapper-define-hyper-like-meta ()
-  "Duplicate all Meta bindings to exist also on Hyper."
+  "Copy all Meta bindings so they exist also on Hyper."
   (massmapper--define-a-like-b-everywhere "H-" "M-"))
 
 (defun massmapper-define-alt-like-ctl ()
-  "Duplicate all Control bindings to exist also on Alt."
+  "Copy all Control bindings so they exist also on Alt."
   (massmapper--define-a-like-b-everywhere "A-" "C-"))
 
 (defun massmapper-define-alt-like-ctlmeta ()
-  "Duplicate all Control-Meta bindings to exist also on Alt."
+  "Copy all Control-Meta bindings so they exist also on Alt."
   (massmapper--define-a-like-b-everywhere "A-" "C-M-"))
 
 (defun massmapper-define-alt-like-meta ()
-  "Duplicate all Meta bindings to exist also on Alt."
+  "Copy all Meta bindings so they exist also on Alt."
   (massmapper--define-a-like-b-everywhere "A-" "M-"))
 
 (defun massmapper-define-metasuper-like-ctlmeta ()
   "Experimental!
-Duplicate all Control-Meta bindings to exist also on Meta-Super."
+Copy all Control-Meta bindings so they exist also on Meta-Super."
   (massmapper--define-a-like-b-everywhere "M-s-" "C-M-"))
 
 
@@ -419,11 +431,11 @@ each KEY to COMMAND.
 
 These KEYs can technically be any key, but there's no reason to
 put in any keys that don't involve C-m or C-i."
+  :group 'massmapper
   :type '(alist
           :key-type (symbol :tag "Keymap")
           :value-type (alist :key-type key
-                             :value-type (function :tag "Command")))
-  :group 'massmapper)
+                             :value-type (function :tag "Command"))))
 
 (defun massmapper--modernize (keydesc)
   "Replace C-m with <return> and C-i with <tab> in KEYDESC.
@@ -456,10 +468,11 @@ instead of C-m/C-i."
    " "))
 ;; (global-set-key (kbd "S-<iso-lefttab>") #'embark-act)
 
-(defun massmapper--how-protect-ret-and-tab (mapsym)
+(defun massmapper--how-protect-ret-and-tab (map)
+  "Actions for conserving Return and Tab behavior in MAP."
   (cl-loop
    with case-fold-search = nil
-   with raw-map = (massmapper--raw-keymap mapsym)
+   with raw-map = (massmapper--raw-keymap map)
    for vec being the key-seqs of raw-map using (key-bindings cmd)
    as key = (key-description vec)
    as modernized-key = (massmapper--modernize key)
@@ -469,18 +482,19 @@ instead of C-m/C-i."
        (unless (equal cmd olddef)
          (list :keydesc modernized-key
                :cmd cmd
-               :map mapsym
+               :map map
                :reason "Conserve behavior of Return & Tab keys"
                :olddef olddef))))
    when action collect action))
 
-(defun massmapper--how-rebind-Cm-Ci (mapsym)
+(defun massmapper--how-rebind-Cm-Ci (map)
+  "Actions for applying `massmapper-Cm-Ci-override' to MAP."
   (cl-loop
-   with raw-map = (massmapper--raw-keymap mapsym)
-   for (key . cmd) in (alist-get mapsym massmapper-Cm-Ci-override)
+   with raw-map = (massmapper--raw-keymap map)
+   for (key . cmd) in (alist-get map massmapper-Cm-Ci-override)
    collect (list :keydesc key
                  :cmd cmd
-                 :map mapsym
+                 :map map
                  :reason "User specified in massmapper-Cm-Ci-override"
                  :olddef (lookup-key-ignore-too-long raw-map (kbd key)))))
 
@@ -497,10 +511,10 @@ Note that you have to defer binding your shiny new C-m and C-i
 commands by specifying them in `massmapper-Cm-Ci-override',
 instead of calling `define-key' yourself."
   (cl-loop
-   for mapsym in (-difference massmapper--known-keymaps
-                              massmapper--tabret-protected-keymaps)
+   for map in (-difference massmapper--known-keymaps
+                           massmapper--tabret-protected-keymaps)
    as start = (current-time)
-   as actions = (massmapper--how-protect-ret-and-tab mapsym)
+   as actions = (massmapper--how-protect-ret-and-tab map)
    as overwritten = (cl-loop
                      for action in actions
                      when (plist-get action :olddef)
@@ -510,12 +524,24 @@ instead of calling `define-key' yourself."
    (when (> massmapper-debug-level 0)
      (message "(In %.3fs) Protected RET and TAB in %S: %d new bindings and %d overwrites"
               (float-time (time-since start))
-              mapsym
+              map
               (- (length actions) overwritten)
               overwritten))
    do
-   (push mapsym massmapper--tabret-protected-keymaps)
-   (massmapper-execute (massmapper--how-rebind-Cm-Ci mapsym))))
+   (push map massmapper--tabret-protected-keymaps)
+   (let* ((rebind-start (current-time))
+          (rebind-actions (massmapper--how-rebind-Cm-Ci map))
+          (rebind-overwrites (cl-loop for action in rebind-actions
+                                      when (plist-get action :olddef)
+                                      count action)))
+     (when rebind-actions
+       (massmapper-execute rebind-actions)
+       (when (> massmapper-debug-level 0)
+         (message "(In %.3fs) Bound keys involving C-m/C-i in %S: %d new bindings and %d overwrites"
+                  (float-time (time-since rebind-start))
+                  map
+                  (- (length rebind-actions) rebind-overwrites)
+                  rebind-overwrites))))))
 
 ;; To test:
 ;; (setq foo (massmapper--how-protect-ret-and-tab 'global-map))
@@ -563,8 +589,8 @@ no effect if it is a so-called named prefix-command such as
 Control-X-prefix or kmacro-keymap (you can find these with
 `describe-function', whereas you can't find org-mode-map, as
 that's a proper mode map)."
-  ;; :type '(repeat (cons (choice key symbol) symbol))
-  :type '(repeat (cons sexp symbol))
+  :type '(repeat (cons (sexp :tag "Key sequence (quoted) or command (unquoted)")
+                       (symbol :tag "Keymap, nil means all keymaps")))
   :group 'massmapper
   :set
   (lambda (var new)
@@ -811,10 +837,11 @@ See `massmapper-homogenizing-winners' for explanation."
                :reason "Homogenize: chord-once overwrites perma-chord"
                :olddef permachord-cmd)))))))
 
-(defvar massmapper--homogenized-keymaps nil)
+(defvar massmapper--homogenized-keymaps nil
+  "Keymaps that have been homogenized.")
 
 (defun massmapper--how-homogenize-keymap (map)
-  "Homogenize most of keymap MAP."
+  "Actions for homogenizing most of keymap MAP."
   (cl-loop
    for vec being the key-seqs of (massmapper--raw-keymap map)
    as key = (key-description vec)
@@ -835,8 +862,21 @@ See `massmapper-homogenizing-winners' for explanation."
 
 (defun massmapper-homogenize ()
   "Homogenize the keymaps newly seen since last call.
-For an explanation, search the readme of:
-https://github.com/meedstrom/deianira"
+What this means is that we forbid any difference between
+\"similar\" key sequences such as C-x C-e and C-x e; we bind both
+to the same command, so it won’t matter if you keep holding down
+Control or not, after initiating that key sequence.
+
+The \"master copy\" is the one with fewer chords, i.e. C-x e,
+whose binding overrides the one on C-x C-e.  This can be
+customized on a case-by-case basis in `massmapper-homogenizing-winners'.
+
+Why we would do something so hare-brained? It supports
+cross-training with the Deianira input paradigm, which by design
+cannot represent a difference between such key sequences.  Learn
+more:
+
+  https://github.com/meedstrom/deianira"
   (cl-loop
    for map in (-difference massmapper--known-keymaps
                            massmapper--homogenized-keymaps)
@@ -867,7 +907,7 @@ https://github.com/meedstrom/deianira"
 
 ;;;###autoload
 (define-minor-mode massmapper-mode
-  "Actively rebind keys in every keymap."
+  "Actively rebind keys as Emacs loads new keymaps."
   :global t
   :group 'massmapper
   (if massmapper-mode

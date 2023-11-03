@@ -11,11 +11,11 @@
 
 The long-absent Emacs facility to systematically remap key bindings.
 
-Ever wished you could just "remap Control to Super", in a way that feels consistent?  Then you're in luck.
+Ever wished you could "just remap Control to Super", but found the implementation much more difficult than expected, and gave up?  Then you're in luck, this package solves that kind of thing!
 
 * Install
 
-Requires Emacs 28+.
+Tested on Emacs 28+.  May also work on older Emacs.
 
 Not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] and =straight-enable-use-package-integration=, you can install the package like so:
 
@@ -32,46 +32,89 @@ Alternatively with Doom Emacs, this goes in =packages.el=:
 
 * Setup
 
-To configure, add any of these hooks:
+You just need to do 2 things:
 
-#+begin_src elisp
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-super-like-ctl)
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-super-like-ctlmeta)
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-super-like-meta)
-#+end_src
+1. Configure =massmapper-keymap-found-hook=
+2. Turn it on by typing =M-x massmapper-mode RET=
+
+To see what has been remapped, try =M-x massmapper-list-remaps RET=.
+
+Note that you can add and remove functions to the hook at any time, but if you regret some changes, you'll have to restart Emacs.
+
+* Explanation of the hook
+
+As of 2023-11-03, Massmapper basically ships three sorts of functions you can add to =massmapper-keymap-found-hook=.  The first sort is easy to explain, so we'll start with that:
+
+** Mirroring modifiers
+
+Here is a broad category of functions with the idea is to simply copy key bindings from one modifier, such as "C-", to another modifier, such as "H-".
+
+Hopefully the names are self-explanatory.  Add any of these functions:
+
+- =massmapper-define-super-like-ctl=
+- =massmapper-define-super-like-ctlmeta=
+- =massmapper-define-super-like-meta=
 
 and any of:
 
-#+begin_src elisp
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-alt-like-ctl)
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-alt-like-ctlmeta)
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-alt-like-meta)
-#+end_src
+- =massmapper-define-alt-like-ctl=
+- =massmapper-define-alt-like-ctlmeta=
+- =massmapper-define-alt-like-meta=
 
 and any of:
 
-#+begin_src elisp
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-hyper-like-ctl)
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-hyper-like-ctlmeta)
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-hyper-like-meta)
-#+end_src
+- =massmapper-define-hyper-like-ctl=
+- =massmapper-define-hyper-like-ctlmeta=
+- =massmapper-define-hyper-like-meta=
 
 and any of (experimental):
 
-#+begin_src elisp
-(add-hook 'massmapper-keymap-found-hook #'massmapper-define-metasuper-like-ctlmeta)
-(add-hook 'massmapper-keymap-found-hook #'massmapper-protect-ret-and-tab)
-#+end_src
+- =massmapper-define-metasuper-like-ctlmeta=
 
-and finally, for those of you coming here from [[https://github.com/meedstrom/deianira][Deianira]], the raison d'etre:
+** Protect the behavior of Return and Tab
 
-#+begin_src elisp
-(add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize -50)
-#+end_src
+Now let's talk about this one:
 
-Finally, turn it on by typing =M-x massmapper-mode RET=.
+- =massmapper-protect-ret-and-tab=
 
-To see what has been remapped, try =M-x massmapper-list-remaps RET=.
+# #+begin_src elisp
+# (add-hook 'massmapper-keymap-found-hook #'massmapper-protect-ret-and-tab)
+# #+end_src
+  
+The intent of this function is just to free up the C-m and C-i keys to be rebound to anything you want without destroying the behavior of your Return and Tab keys.  Maybe in the future, it'll also be able to free up C-g and C-[, but don't count on it; those are complicated affairs.
+
+Two gotchas:
+
+Gotcha 1: Don't rebind C-m or C-i at init time.  Record your preferences in the variable =massmapper-Cm-Ci-override=.
+
+Gotcha 2: This only works in GUI Emacs.  After all, basic terminal environments like the TTY are the original reason that C-m works as an alias for RET and C-i works as an alias for TAB.  No getting around that.
+
+# The cleanest solution is always to just deprecate the Control key, i.e. to never use it in Emacs again, with the help of =massmapper-define-super-like-ctl=.  Consider this a lightweight version of that.
+
+*** To EXWM users
+
+Instead of using =massmapper-protect-ret-and-tab=, I invite you to just deprecate Control via =massmapper-define-super-like-ctl=.  Doing so under EXWM has the nice side effect that you can control other GUI apps such as Firefox with zero interference from Emacs hotkeys because Firefox uses Control and Emacs uses Super.
+
+You may know that Apple did a bizarro version of this same approach vis a vis their "Terminal.app", but in Apple's world, all GUI apps are controlled by the Super key because GUI apps are the "important" apps and the Terminal is unimportant.
+
+By contrast, in the EXWM world plus =massmapper-define-super-like-ctl=, all GUI apps (including terminals---how strange to refer to them as "GUI" apps!) are controlled by Control because they are all unimportant.
+
+To put it differently, it's not just the terminal that's an annoying relic from the Old World, it's every app aside from Emacs itself (which is of course the future of computing), so we put them all on the same playing field; let them fight for the Control key and let Emacs ascend above the drama.
+
+** Homogenize
+For those of you coming here from [[https://github.com/meedstrom/deianira][Deianira]], the original reason I made this library:
+
+- =massmapper-homogenize=
+
+# #+begin_src elisp
+# (add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize -50)
+# #+end_src
+
+For a deeper explanation, see the README of that package.  In short, homogenizing means we forbid any difference between "similar" key sequences such as =C-x C-e= and =C-x e=; we bind both to the same command, so it won’t matter if you keep holding down Control or not, after initiating that key sequence.
+
+The "master copy" is the one with fewer chords, i.e. =C-x e=, whose binding overrides the one on =C-x C-e=.  This can be customized on a case-by-case basis in the variable =massmapper-homogenizing-winners=.
+
+Why we would do something so hare-brained?  It supports cross-training with the Deianira input paradigm, which by design cannot represent a difference between such key sequences (and considers this a feature, not a bug).
 
 * Appendix
 *** Tip: Binding under the "old" prefix
@@ -141,11 +184,11 @@ Emacs hardcodes =C-g= as the "unfreeze Emacs" key.
 
 Unfortunately when Emacs freezes, nothing else than =C-g= will get it out of that state.  This package will dutifully copy the =keyboard-quit= command to =s-g= or wherever, but when Emacs is frozen, the keymaps aren't being looked up at all!
 
-I'm sure that many people through the ages have tried in good faith to bind =keyboard-quit= to =<escape>= or some such, only to give up eventually when they saw that the result wasn't consistent.
+I'm sure that many people through the ages have tried in good faith to bind =keyboard-quit= to =<escape>= or some such representative of modernity, only to give up when they saw that the result wasn't consistent.
 
 I surmise we can't remove the =C-g= behavior from =C-g= itself because of TTYs, but it should be possible to add /more/ keyboard interrupts than just =C-g=.  Emacs would probably need a compile-time option, which could maybe become a startup parameter or Lisp setting.
 
-There is nothing Massmapper can do from within Emacs Lisp.
+There is nothing Massmapper can do from within Emacs Lisp.  If you really want to move the C-g behavior, you could tell your window manager or kmonad to send a real C-g in place of s-g or whichever key you prefer.  That gets a bit crazy if it's the Escape key you want to give this behavior... because that breaks other apps.  You would need a WM that's aware of whether Emacs is in focus or not.
 
 *** Gotcha: C-g is sometimes a hardcoded "cancel-button"
 Aside from the above, some Emacs Lisp functions hardcode =C-g= as a "cancel" action, but this can usually be circumvented with a key-translation---which for your information, Massmapper won't do by default.  This tends to do the trick:

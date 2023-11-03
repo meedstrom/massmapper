@@ -21,6 +21,7 @@
 
 (require 'dash)
 (eval-when-compile (require 'cl-lib))
+(eval-when-compile (require 'subr-x))
 
 (defconst massmapper--ignore-keys-control-chars
   '("ESC" "C-["
