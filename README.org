@@ -17,7 +17,7 @@ Ever wished you could "just remap Control to Super", but found the implementatio
 
 Tested on Emacs 28+.  May also work on older Emacs.
 
-Not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] and =straight-enable-use-package-integration=, you can install the package like so:
+Not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] (and =straight-enable-use-package-integration=), you can install the package like so:
 
 #+begin_src elisp
 (use-package massmapper
@@ -41,13 +41,13 @@ To see what has been remapped, try =M-x massmapper-list-remaps RET=.
 
 Note that you can add and remove functions to the hook at any time, but if you regret some changes, you'll have to restart Emacs.
 
-* Explanation of the hook
+* What to put on the hook?
 
-As of 2023-11-03, Massmapper basically ships three sorts of functions you can add to =massmapper-keymap-found-hook=.  The first sort is easy to explain, so we'll start with that:
+As of 2023-11-03, Massmapper ships three sorts of functions you can add to =massmapper-keymap-found-hook=.  The first sort is easy to explain, so we'll start with that:
 
 ** Mirroring modifiers
 
-Here is a broad category of functions with the idea is to simply copy key bindings from one modifier, such as "C-", to another modifier, such as "H-".
+In these functions, the idea is to simply copy key bindings from one modifier, such as "C-", to another modifier, such as "H-".
 
 Hopefully the names are self-explanatory.  Add any of these functions:
 
@@ -73,7 +73,7 @@ and any of (experimental):
 
 ** Protect the behavior of Return and Tab
 
-Now let's talk about this one:
+Let's talk about this one:
 
 - =massmapper-protect-ret-and-tab=
 
@@ -81,7 +81,8 @@ Now let's talk about this one:
 # (add-hook 'massmapper-keymap-found-hook #'massmapper-protect-ret-and-tab)
 # #+end_src
   
-The intent of this function is just to free up the C-m and C-i keys to be rebound to anything you want without destroying the behavior of your Return and Tab keys.  Maybe in the future, it'll also be able to free up C-g and C-[, but don't count on it; those are complicated affairs.
+The intent of this function is just to free up the C-m and C-i keys to be rebound to anything you want without destroying the behavior of your Return and Tab keys.
+# Maybe in the future, it'll also be able to free up C-g and C-[, but don't count on it; those are complicated affairs.
 
 Two gotchas:
 
@@ -217,7 +218,7 @@ not this:
 (define-key my-map (kbd "C-g") #'my-special-cancel)
 #+end_src
 
-If you must refer directly to a key in some custom interaction, don't use =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations!
+If you must refer directly to a key in some custom interaction, don't use the demon functions =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations!
 
 Use =read-key=, or higher-level functions such as =read-char-choice=, =read-multiple-choice=, =read-answer=, =read-char-from-minibuffer=, =y-or-n-p= etc.  See the Info manual chapter "(elisp)Reading Input".
 
