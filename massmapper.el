@@ -435,7 +435,7 @@ put in any keys that don't involve C-m or C-i."
   :type '(alist
           :key-type (symbol :tag "Keymap")
           :value-type (alist :key-type key
-                             :value-type (function :tag "Command"))))
+                             :value-type (sexp :tag "Command"))))
 
 (defun massmapper--modernize (keydesc)
   "Replace C-m with <return> and C-i with <tab> in KEYDESC.
