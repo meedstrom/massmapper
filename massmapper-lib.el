@@ -275,6 +275,42 @@ Trivial function, but useful for `mapcar' and friends."
 
 ;;;; Stuff used only by massmapper, not by deianira
 
+(defun massmapper--modernize (keydesc)
+  "Replace C-m with <return> and C-i with <tab> in KEYDESC.
+Takes care of all possible permutations, such as C-M-m, C-H-m,
+C-s-m, C-S-m, A-C-H-M-S-s-m..., as well as when RET/TAB is written
+instead of C-m/C-i."
+  (string-join
+   (cl-loop
+    for bit in (split-string keydesc " " t)
+    if (and (string-search "C-" bit)
+            (string-suffix-p "m" bit))
+    collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<return>")
+    ;; Special case: S-<tab> doesn't exist, instead it's named <backtab> or
+    ;; S-<iso-lefttab>.  Another special case is that in principle we could
+    ;; encounter a key C-I as an alias for C-S-i, but fortunately Control keys
+    ;; are always case-insensitive so I figure Emacs won't ever print out a
+    ;; keymap as having C-I bound.
+    else if (and (string-search "C-" bit)
+                 (string-search "S-" bit)
+                 (string-suffix-p "i" bit))
+    collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<iso-lefttab>")
+    else if (and (string-search "C-" bit)
+                 (string-suffix-p "i" bit))
+    collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<tab>")
+    else if (string-suffix-p "RET" bit)
+    collect (concat (substring bit 0 -3) "<return>")
+    else if (and (string-search "S-" bit)
+                 (string-suffix-p "TAB" bit))
+    collect (concat (substring bit 0 -3) "<iso-lefttab>")
+    else if (string-suffix-p "TAB" bit)
+    collect (concat (substring bit 0 -3) "<tab>")
+    else collect bit)
+   " "))
+
+;; (global-set-key (kbd "S-<iso-lefttab>") #'embark-act)
+;; (global-set-key (kbd "S-TAB") #'embark-act)
+
 (defun massmapper--key-seq-has-non-prefix-in-prefix (keymap keydesc)
   "Is any prefix of KEYDESC bound to a command?
 For example: C-x C-v is bound to a simple command by default, so if

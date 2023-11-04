@@ -437,37 +437,6 @@ put in any keys that don't involve C-m or C-i."
           :value-type (alist :key-type key
                              :value-type (sexp :tag "Command"))))
 
-(defun massmapper--modernize (keydesc)
-  "Replace C-m with <return> and C-i with <tab> in KEYDESC.
-Takes care of all possible permutations, such as C-M-m, C-H-m,
-C-s-m, C-S-m, A-C-H-M-S-s-m..., as well as when RET/TAB is written
-instead of C-m/C-i."
-  (string-join
-   (cl-loop
-    for bit in (split-string keydesc " ")
-    if (and (string-search "C-" bit)
-            (string-suffix-p "m" bit))
-    collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<return>")
-    ;; Special case: S-<tab> doesn't exist, instead it's named <backtab> or
-    ;; S-<iso-lefttab>.  Another special case is that in principle we could
-    ;; encounter a key C-I as an alias for C-S-i, but fortunately Control keys
-    ;; are always case-insensitive so I figure Emacs won't ever print out a
-    ;; keymap as having C-I bound.
-    else if (and (string-search "C-" bit)
-                 (string-search "S-" bit)
-                 (string-suffix-p "i" bit))
-    collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<iso-lefttab>")
-    else if (and (string-search "C-" bit)
-                 (string-suffix-p "i" bit))
-    collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<tab>")
-    else if (string-suffix-p "RET" bit)
-    collect (concat (substring bit 0 -3) "<return>")
-    else if (string-suffix-p "TAB" bit)
-    collect (concat (substring bit 0 -3) "<tab>")
-    else collect bit)
-   " "))
-;; (global-set-key (kbd "S-<iso-lefttab>") #'embark-act)
-
 (defun massmapper--how-protect-ret-and-tab (map)
   "Actions for conserving Return and Tab behavior in MAP."
   (cl-loop
