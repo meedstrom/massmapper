@@ -20,7 +20,7 @@
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
 ;; Version: 0.1.2-snapshot
-;; Keywords: abbrev convenience
+;; Keywords: convenience
 ;; Homepage: https://github.com/meedstrom/massmapper
 ;; Package-Requires: ((emacs "28.1") (dash "2.19.1"))
 
@@ -31,7 +31,7 @@
 ;; (require 'massmapper)
 ;; (add-hook 'after-init-hook #'massmapper-mode)
 ;; (add-hook 'massmapper-keymap-found-hook #'massmapper-define-super-like-ctl)
-;; (add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize-all-keymaps))
+;; (add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize))
 
 ;;; Code:
 
@@ -129,7 +129,7 @@ function simply returns its name."
     (let ((action (pop actions)))
       (if (member action massmapper--remap-record)
           (when (> massmapper-debug-level 1)
-            (message "Mass-remap already took this action: %S" action))
+            (message "Massmapper already took this action: %S" action))
         (push action massmapper--remap-record)
         (map-let ((:keydesc keydesc) (:cmd cmd) (:map map)) action
           (let ((raw-map (massmapper--raw-keymap map)))
@@ -183,7 +183,9 @@ You may be interested in hooking some of these functions:
 
 or some of these EXPERIMENTAL! functions:
 
-- `massmapper-define-metasuper-like-ctlmeta'
+- `massmapper-define-althyper-like-ctlmeta'
+- `massmapper-define-altsuper-like-ctlmeta'
+- `massmapper-define-hypersuper-like-ctlmeta'
 - `massmapper-protect-ret-and-tab'"
   :type 'hook
   :options '(massmapper-homogenize
