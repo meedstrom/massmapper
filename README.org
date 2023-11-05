@@ -106,13 +106,13 @@ This one's still a bit experimental:
 
 - =massmapper-protect-ret-and-tab=
 
-The intent of this function is just to free up the C-m and C-i keys to be rebound to anything you want without destroying the behavior of your Return and Tab keys.
+The intent of this function is just to free up the =C-m= and =C-i= keys so they can be rebound to anything you want without destroying the behavior of your Return and Tab keys.
 
 Two gotchas:
 
-Gotcha 1: Don't rebind C-m or C-i yourself.  Record your preferences in the variable =massmapper-Cm-Ci-override= and let Massmapper do it for you.
+Gotcha 1: Don't rebind =C-m= or =C-i= yourself.  Record your preferences in the variable =massmapper-Cm-Ci-override= and let Massmapper do it for you.
 
-Gotcha 2: This only works in GUI Emacs.  After all, basic terminal environments like the TTY are the original reason that C-m works as an alias for RET and C-i works as an alias for TAB.  No getting around that.
+Gotcha 2: This only works in GUI Emacs.  After all, basic terminal environments like the TTY are the original reason that =C-m= works as an alias for =RET= and =C-i= works as an alias for =TAB=.  No getting around that.
 
 *** To EXWM users
 
@@ -187,7 +187,7 @@ I'm sure that many people through the ages have tried in good faith to bind =key
 
 I surmise we can't remove the =C-g= behavior from =C-g= itself because of TTYs, but it should be possible to add /more/ keyboard interrupts than just =C-g=.  Emacs would probably need a compile-time option, which could maybe become a startup parameter or Lisp setting.
 
-There is nothing Massmapper can do from within Emacs Lisp.  If you really want to move the C-g behavior, you could tell your window manager or kmonad to send a real C-g in place of s-g or whichever key you prefer.  That gets a bit crazy if it's the Escape key you want to give this behavior... because that breaks other apps.  You would need a WM that's aware of whether Emacs is in focus or not.
+There is nothing Massmapper can do from within Emacs Lisp.  If you really want to move the =C-g= behavior, you could tell your window manager or [[https://github.com/kmonad/kmonad][kmonad]] to send a real =C-g= in place of =s-g= or whichever key you prefer.  That gets a bit crazy if it's the Escape key you want to give this behavior... because that breaks other apps.  You would need a WM that's aware of whether Emacs is in focus or not.
 
 *** Gotcha: C-g is sometimes a hardcoded "cancel-button"
 Aside from the above, some Emacs Lisp functions hardcode =C-g= as a "cancel" action, but this can usually be circumvented with a key-translation---which for your information, Massmapper won't do by default.  This tends to do the trick:
