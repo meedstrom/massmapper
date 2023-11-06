@@ -15,17 +15,11 @@ Ever tried to "remap Control to Super", but found it much harder to do well than
 
 * Install
 
-Not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]] (and =straight-enable-use-package-integration=), you can install the package like so:
+Not yet on (M)ELPA.  With [[https://github.com/raxod502/straight.el][straight.el]], you can install the package like so:
 
 #+begin_src elisp
 (use-package massmapper
   :straight (massmapper :type git :host github :repo "meedstrom/massmapper"))
-#+end_src
-
-Alternatively with Doom Emacs, this goes in =packages.el=:
-
-#+begin_src elisp
-(package! massmapper :recipe (:host github :repo "meedstrom/massmapper"))
 #+end_src
 
 * Setup
@@ -36,6 +30,8 @@ Setup consists of two steps:
 2. Turn it on by typing =M-x massmapper-mode RET=
 
 That's it! To see what has been remapped, try =M-x massmapper-list-remaps RET=.
+
+It'll keep remapping keys as it finds keymaps, on first load of each major or minor mode.
 
 # Note that you can add and remove functions to the hook at any time, but if you regret some effects, you'll have to restart Emacs.
 
