@@ -379,8 +379,8 @@ be entirely unchorded."
                        (-map #'massmapper--get-leaf (cdr steps)))
                  " ")))
 
-;; it occurs to me this was unnecessary to split up, but well, at least it's
-;; recomposable code
+;; It occurs to me this was unnecessary to split up into two functions, but
+;; well, at least it's recomposable code.
 (defun massmapper--modernize (keydesc)
   (massmapper--modernize-tab (massmapper--modernize-ret keydesc)))
 
@@ -439,17 +439,6 @@ instead of C-m."
 ;; (global-set-key (kbd "S-TAB") #'embark-act)
 
 
-;; TODO: Maybe test reimplementing kmu-lookup-local-key (which strips the
-;; parents from MAP). Could it fix some errors / strange behaviors?
-;;
-;; https://github.com/tarsius/keymap-utils/blob/main/keymap-utils.el
-;;
-;; Could be cool to make an experimental branch that uses as many kmu functions
-;; as possible. Then talk to tarsius about maybe merging with some of massmapper-lib.
-;; (require 'keymap-utils)
-
-
-
 ;; having S- instead of a capital is disallowed!
 ;; (lookup-key global-map (key-parse "C-S-x <return> p")) ;; invalid
 ;; (lookup-key global-map (key-parse "C-X <return> p")) ;; valid
@@ -495,25 +484,22 @@ already normalizes some aspects of it."
 ;; (massmapper--normalize "H-A-C-S-i")
 ;; (massmapper--normalize "s-c H-A-p 4 a")
 
-;; TODO: Deprecate.  It's mainly for debugging; now that I've understood things,
-;; can just wrap keymap-lookup in ignore-errors.  Although what if there's a
-;; numeric return at some point?  Guess it's still more idiomatic to check at
-;; the caller.
 (cl-defun massmapper--lookup (map key &optional no-warn-numeric no-warn-invalid)
   "Variant of Emacs 29 `keymap-lookup', with different behavior."
   (declare (compiler-macro (lambda (form) (keymap--compile-check key) form)))
-
   (unless no-warn-invalid
     ;; Instead of signaling an error, prefer to keep trying to bind most
     ;; bindings, since most attempts usually work.  Giving up at the first error
-    ;; can leave an user stranded without the keys they're used to.
+    ;; can leave an user stranded without the keys they're used to.  So, just
+    ;; warn, don't error like `keymap-lookup' does.
     (with-demoted-errors "%s"
       (keymap--check key)))
-
   (let* ((raw-map (massmapper--raw-keymap map))
          ;; (raw-map (kmu--strip-keymap (massmapper--raw-keymap map)))
          (value (lookup-key raw-map (key-parse key))))
-    ;; It's good for debugging to know when `lookup-key' returns numeric, so warn.
+    ;; Good debugging to know when `lookup-key' returns numeric, so warn.  At
+    ;; the same time, return nil like `lookup-key-ignore-too-long' so I don't
+    ;; have to handle this eventuality in every caller.
     (if (numberp value)
         (prog1 nil
           (unless no-warn-numeric
@@ -522,7 +508,8 @@ already normalizes some aspects of it."
                   (if (symbolp map)
                       map
                     (help-fns-find-keymap-name map)))))
-      ;; an oversight in upstream: didn't pass keymap to `command-remapping'
+      ;; Seems to have been an oversight in upstream `keymap-lookup': it didn't
+      ;; pass a keymap to `command-remapping'...
       (or (command-remapping value nil raw-map) value))))
 
 (provide 'massmapper-lib)

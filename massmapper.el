@@ -31,7 +31,7 @@
 ;; (require 'massmapper)
 ;; (add-hook 'after-init-hook #'massmapper-mode)
 ;; (add-hook 'massmapper-keymap-found-hook #'massmapper-define-super-like-ctl)
-;; (add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize))
+;; (add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize -50))
 
 ;;; Code:
 
@@ -39,9 +39,9 @@
 (require 'dash)
 (require 'compat)
 (require 'cl-lib)
+(require 'subr-x)
 (require 'help-fns) ;; help-fns-find-keymap-name
 (require 'map) ;; map-let
-(require 'subr-x) ;; string-join
 
 ;; REVIEW: Verify that command remappings apply
 
@@ -157,7 +157,7 @@
                 (keymap-unset raw-map conflict-prefix t)
                 ;; In fact, create a keymap so that `lookup-key' won't whine
                 ;; later (by returning a numeric value).  Hopefully.
-                ;; REVIEW: necessary?  If so, maybe -non-prefix-in-prefix should
+                ;; REVIEW: Necessary?  If so, maybe -non-prefix-in-prefix should
                 ;; return every prefix so we can do this for each.  Or just the
                 ;; longest prefix -- I believe the parents create themselves.
                 (keymap-set raw-map conflict-prefix (make-sparse-keymap))))
@@ -632,8 +632,8 @@ only inside KEYMAP.
 KEYMAP should be a major or minor mode map.  It will likely have
 no effect if it is a so-called named prefix-command such as
 Control-X-prefix or kmacro-keymap (you can find these with
-                                       `describe-function', whereas you can't find org-mode-map, as
-                                       that's a proper mode map)."
+`describe-function', whereas you can't find org-mode-map, as
+that's a proper mode map)."
   :type '(repeat (cons (sexp :tag "Key sequence (in quotes) or command (unquoted)")
                        (symbol :tag "Keymap (nil means all keymaps)")))
   :group 'massmapper
@@ -907,12 +907,9 @@ See `massmapper-homogenizing-winners' for explanation."
    ;; (not (massmapper--key-contains dei--all-shifted-symbols-list this-key))
    ;; (not (massmapper--key-contains-multi-chord this-key))
    ;; (not (massmapper--key-mixes-modifiers this-key))
-   as action =
-   (unless (string-match-p massmapper--homogenize-ignore-regexp key)
-     (massmapper--how-homogenize-key-in-keymap key cmd map))
+   as action = (unless (string-match-p massmapper--homogenize-ignore-regexp key)
+                 (massmapper--how-homogenize-key-in-keymap key cmd map))
    when action collect action))
-
-;; (setq foo (massmapper--how-homogenize-keymap 'global-map))
 
 (defun massmapper-homogenize ()
   "Homogenize all keymaps.
@@ -948,107 +945,6 @@ See `massmapper-homogenizing-winners' for explanation."
               overwritten))
    do (push map massmapper--homogenized-keymaps)))
 
-;; I have the feeling this refactor is ape-brain.  After all, prepping prefix
-;; maps happens the first time we encounter a key that needs one, i.e. a nested
-;; key. See use of -has-non-prefix-in-prefix.  Maybe it's just that not enough
-;; is happening. Maybe it needs to actively call make-sparse-keymap.
-;; (defun massmapper--how-homogenize-keymap (map)
-;;   "Actions for homogenizing most of keymap MAP."
-;;   (let ((key-seqs-by-length
-;;          (cl-loop
-;;           with grand-list = nil
-;;           for vec being the key-seqs of (massmapper--raw-keymap map)
-;;           as key = (massmapper--normalize (key-description vec))
-;;           as length = (massmapper--key-seq-steps-length key)
-;;           do (push key (alist-get length grand-list))
-;;           finally return grand-list)))
-;;     ;; Do the shorter sequences first so prefix maps exist and won't make
-;;     ;; `lookup-key' cry.  Hopefully.
-;;     (dotimes (i (length key-seqs-by-length))
-;;       (let ((actions
-;;              (cl-loop
-;;               for key in (alist-get (1+ i) key-seqs-by-length)
-;;               ;; REVIEW: consider pre-filtering the keymap with nonessential filters
-;;               ;; like these--avoid clobbering things the user could ignore anyway?
-;;               ;; (not (member this-cmd '(self-insert-command
-;;               ;;                         ignore
-;;               ;;                         ignore-event
-;;               ;;                         company-ignore)))
-;;               ;; (not (string-match-p dei--shift-chord-regexp this-key))
-;;               ;; (not (massmapper--key-contains dei--all-shifted-symbols-list this-key))
-;;               ;; (not (massmapper--key-contains-multi-chord this-key))
-;;               ;; (not (massmapper--key-mixes-modifiers this-key))
-;;               as action =
-;;               (unless (string-match-p massmapper--homogenize-ignore-regexp key)
-;;                 (massmapper--how-homogenize-key-in-keymap key map))
-;;               when action collect action)))
-;;         (massmapper-execute actions)
-;;         actions)))
-
-;;   ;; (cl-sort
-;;   ;;  (cl-loop
-;;   ;;   for vec being the key-seqs of (massmapper--raw-keymap map)
-;;   ;;   as key = (key-description vec)
-;;   ;;   ;; REVIEW: consider pre-filtering the keymap with nonessential filters
-;;   ;;   ;; like these--avoid clobbering things the user could ignore anyway?
-;;   ;;   ;; (not (member this-cmd '(self-insert-command
-;;   ;;   ;;                         ignore
-;;   ;;   ;;                         ignore-event
-;;   ;;   ;;                         company-ignore)))
-;;   ;;   ;; (not (string-match-p dei--shift-chord-regexp this-key))
-;;   ;;   ;; (not (massmapper--key-contains dei--all-shifted-symbols-list this-key))
-;;   ;;   ;; (not (massmapper--key-contains-multi-chord this-key))
-;;   ;;   ;; (not (massmapper--key-mixes-modifiers this-key))
-;;   ;;   as action =
-;;   ;;   (unless (string-match-p massmapper--homogenize-ignore-regexp key)
-;;   ;;     (massmapper--how-homogenize-key-in-keymap key map))
-;;   ;;   when action collect action)
-;;   ;;  ;; Do the shorter sequences first so prefix maps exist and won't make
-;;   ;;  ;; `lookup-key' cry.  Hopefully.  On second thought it prolly makes no
-;;   ;;  ;; difference.  We need to chunk up the key-seqs by key seq step length and
-;;   ;;  ;; call how-homogenize and execute for seqs of length 1 before we start to
-;;   ;;  ;; analyze seqs of length 2, and so on.
-;;   ;;  (lambda (a b)
-;;   ;;    (< (massmapper--key-seq-steps-length (plist-get a :keydesc))
-;;   ;;       (massmapper--key-seq-steps-length (plist-get b :keydesc)))))
-
-;;   )
-;; ;; (setq foo (massmapper--how-homogenize-keymap 'global-map))
-
-;; (defun massmapper-homogenize ()
-;;   "Homogenize all keymaps.
-;;   What this means is that we forbid any difference between
-;;   \"similar\" key sequences such as C-x C-e and C-x e; we bind both
-;;   to the same command, so it won’t matter if you keep holding down
-;;   Control or not, after initiating that key sequence.
-
-;;   The \"master copy\" is the one with fewer chords, i.e. C-x e,
-;;   whose binding overrides the one on C-x C-e.  This can be
-;;   customized on a case-by-case basis in `massmapper-homogenizing-winners'.
-
-;;   Why we would do something so hare-brained?  It supports
-;;   cross-training with the Deianira input paradigm, which by design
-;;   cannot represent a difference between such key sequences.  Learn
-;;   more at:  https://github.com/meedstrom/deianira"
-;;   (cl-loop
-;;    for map in (-difference massmapper--known-keymaps
-;;                            massmapper--homogenized-keymaps)
-;;    as start = (current-time)
-;;    as actions = (massmapper--how-homogenize-keymap map)
-;;    as overwritten = (cl-loop
-;;                      for action in actions
-;;                      when (plist-get action :olddef)
-;;                      count action)
-;;    when actions do
-;;    ;; (massmapper-execute actions)
-;;    (when (> massmapper-debug-level 0)
-;;      (message "(In %.3fs) Homogenized %S: %d new bindings and %d overwrites"
-;;               (float-time (time-since start))
-;;               map
-;;               (- (length actions) overwritten)
-;;               overwritten))
-;;    do (push map massmapper--homogenized-keymaps)))
-
 (define-obsolete-function-alias 'dei-homogenize-all-keymaps
   'massmapper-homogenize "2023-10-30")
 
@@ -1071,10 +967,6 @@ See `massmapper-homogenizing-winners' for explanation."
                 #'massmapper-record-keymap-maybe -70)
     (remove-hook 'window-buffer-change-functions
                  #'massmapper-record-keymap-maybe)))
-
-;; test
-;; (add-hook 'window-buffer-change-functions
-;;           (defun foo (&rest _) (message "triggered")))
 
 (provide 'massmapper)
 
