@@ -22,7 +22,7 @@
 ;; Version: 0.1.2-snapshot
 ;; Keywords: convenience
 ;; Homepage: https://github.com/meedstrom/massmapper
-;; Package-Requires: ((emacs "28.1") (dash "2.19.1"))
+;; Package-Requires: ((emacs "24.4") (dash "2.19.1") (compat "29.1.4.3"))
 
 ;;; Commentary:
 
@@ -37,14 +37,28 @@
 
 (require 'massmapper-lib)
 (require 'dash)
-(eval-when-compile (require 'cl-lib))
-(eval-when-compile (require 'help-fns)) ;; help-fns-find-keymap-name
-(eval-when-compile (require 'map)) ;; map-let
-(eval-when-compile (require 'subr-x)) ;; string-join
+(require 'compat)
+(require 'cl-lib)
+(require 'help-fns) ;; help-fns-find-keymap-name
+(require 'map) ;; map-let
+(require 'subr-x) ;; string-join
+
+;; REVIEW: Verify that command remappings apply
 
 ;; TODO: What to do about C-c C-x p  (org-set-property)?
-;; Because there is also C-c x p which copies to C-c C-x C-p.
-;; Maybe the user should be alerted to bastard sequences.
+;;       Because there is also C-c x p which copies to C-c C-x C-p.
+;;       Maybe the user should be alerted to bastard sequences.
+
+;; TODO: Promote error signals, which currently get demoted to a "Error during
+;;       redisplay" message (because of where we put the hook)
+
+;; TODO: Test binding keyboard macros and lambdas, and see if they get copied.
+;;       I don't never bind either, so it's worth a look.
+;;       https://www.gnu.org/software//emacs/manual/html_node/elisp/Key-Lookup.html
+;;       A keyboard macro is represented as a string or vector, a lambda is a
+;;       list with the symbol lambda as car.
+
+;; TODO: Handle capitals and Shift just as well as any other mod
 
 
 ;;; Basics
@@ -61,9 +75,6 @@
 (defvar massmapper--remap-record nil
   "Record of work done.")
 
-(defvar massmapper--remap-actions nil
-  "List of actions to pass to `define-key'.")
-
 (define-derived-mode massmapper-list-remaps-mode tabulated-list-mode
   "Remaps List"
   nil
@@ -78,9 +89,9 @@
 
 (defun massmapper--pretty-print-def (def)
   "Return a string that tries to say what DEF refers to.
-DEF should be a key definition such as that returned by
-`lookup-key'; most of the time, it's a command, and then this
-function simply returns its name."
+  DEF should be a key definition such as that returned by
+  `lookup-key'; most of the time, it's a command, and then this
+  function simply returns its name."
   (cond ((symbolp def)
          (symbol-name def))
         ((keymapp def)
@@ -106,19 +117,22 @@ function simply returns its name."
       (massmapper-list-remaps-mode)
       (cl-loop
        for item in massmapper--remap-record
-       do (map-let ((:keydesc keydesc) (:cmd cmd) (:map map) (:reason reason) (:olddef oldcmd)) item
-            (let ((cmd-string (massmapper--pretty-print-def cmd))
-                  (oldcmd-string
-                   (if oldcmd
-                       (concat "(was " (massmapper--pretty-print-def oldcmd) ")")
-                     "")))
-              (push (list (sxhash item)
-                          (vector (symbol-name map)
-                                  reason
-                                  keydesc
-                                  cmd-string
-                                  oldcmd-string))
-                    tabulated-list-entries))))
+       do
+       ;; (cl-destructuring-bind (&key keydesc cmd map reason olddef) item)
+       (map-let ((:keydesc keydesc) (:cmd cmd) (:map map) (:reason reason) (:olddef oldcmd)) item
+         (let ((cmd-string (massmapper--pretty-print-def cmd))
+               (oldcmd-string
+                (if oldcmd
+                    (concat "(was " (massmapper--pretty-print-def oldcmd)
+                            ")")
+                  "")))
+           (push (list (sxhash item)
+                       (vector (symbol-name map)
+                               reason
+                               keydesc
+                               cmd-string
+                               oldcmd-string))
+                 tabulated-list-entries))))
       (tabulated-list-print)
       (display-buffer buf))))
 
@@ -130,63 +144,73 @@ function simply returns its name."
       (if (member action massmapper--remap-record)
           (when (> massmapper-debug-level 1)
             (message "Massmapper already took this action: %S" action))
-        (push action massmapper--remap-record)
         (map-let ((:keydesc keydesc) (:cmd cmd) (:map map)) action
           (let ((raw-map (massmapper--raw-keymap map)))
-            (when-let* ((conflict-prefix (massmapper--key-seq-has-non-prefix-in-prefix
-                                          raw-map keydesc))
-                        (conflict-def (lookup-key-ignore-too-long
-                                       raw-map (kbd conflict-prefix))))
+            (when-let* ((conflict-prefix
+                         (massmapper--key-seq-has-non-prefix-in-prefix
+                          raw-map keydesc))
+                        (conflict-def (massmapper--lookup map conflict-prefix t)))
               (unless (keymapp conflict-def)
                 ;; If the prefix is bound and it's not to a keymap, unbind the
                 ;; prefix so we'll be allowed to bind our key. (prevent error
                 ;; "Key sequence starts with non-prefix key")
-                (define-key raw-map (kbd conflict-prefix) nil)))
-            (define-key raw-map (kbd keydesc) cmd)))))))
+                (keymap-unset raw-map conflict-prefix t)
+                ;; In fact, create a keymap so that `lookup-key' won't whine
+                ;; later (by returning a numeric value).  Hopefully.
+                ;; REVIEW: necessary?  If so, maybe -non-prefix-in-prefix should
+                ;; return every prefix so we can do this for each.  Or just the
+                ;; longest prefix -- I believe the parents create themselves.
+                (keymap-set raw-map conflict-prefix (make-sparse-keymap))))
+            (if (null cmd)
+                (progn
+                  (message "Massmapper unbound %s in %S (was %s)"
+                           keydesc map cmd)
+                  (keymap-unset raw-map keydesc t))
+              (keymap-set raw-map keydesc cmd))))
+        (push action massmapper--remap-record)))))
 
-(defun massmapper-remap-revert ()
+(defun massmapper-revert ()
   "Experimental command to undo all remaps made.
-It's recommended to just restart Emacs, but this might work.
+  It's recommended to just restart Emacs, but this might work.
 
-It won't restore everything: it's likely a few prefix keys
-were unbound and will stay unbound."
+  It won't restore everything: it's likely a few prefix keys
+  were unbound and will stay unbound."
   (interactive)
   (cl-loop
    for item in massmapper--remap-record
-   ;; Alternative expression
-   ;; do (cl-destructuring-bind (&key keydesc map olddef &allow-other-keys) item
-   ;;      (define-key (massmapper--raw-keymap map) keydesc olddef))
    do (map-let ((:keydesc keydesc) (:map map) (:olddef olddef)) item
-        (define-key (massmapper--raw-keymap map) keydesc olddef))
+        (if (null olddef)
+            (keymap-unset (massmapper--raw-keymap map) keydesc t)
+          (keymap-set (massmapper--raw-keymap map) keydesc olddef)))
    finally do
    (setq massmapper--remap-record nil)
    (setq massmapper--homogenized-keymaps nil)
-   (setq massmapper--super-reflected-keymaps nil)
-   (setq massmapper--alt-reflected-keymaps nil)))
+   (setq massmapper--reflected-maps-per-mod nil)
+   (setq massmapper--keymaps-conserving-tabret nil)))
 
 (defcustom massmapper-keymap-found-hook nil
   "Run after adding one or more keymaps to `massmapper--known-keymaps'.
-See `massmapper-record-keymap-maybe', which triggers this hook.
+  See `massmapper-record-keymap-maybe', which triggers this hook.
 
-You may be interested in hooking some of these functions:
+  You may be interested in hooking some of these functions:
 
-- `massmapper-homogenize'
-- `massmapper-define-super-like-ctl'
-- `massmapper-define-super-like-ctlmeta'
-- `massmapper-define-super-like-meta'
-- `massmapper-define-alt-like-ctl'
-- `massmapper-define-alt-like-ctlmeta'
-- `massmapper-define-alt-like-meta'
-- `massmapper-define-hyper-like-ctl'
-- `massmapper-define-hyper-like-ctlmeta'
-- `massmapper-define-hyper-like-meta'
+  - `massmapper-homogenize'
+  - `massmapper-define-super-like-ctl'
+  - `massmapper-define-super-like-ctlmeta'
+  - `massmapper-define-super-like-meta'
+  - `massmapper-define-alt-like-ctl'
+  - `massmapper-define-alt-like-ctlmeta'
+  - `massmapper-define-alt-like-meta'
+  - `massmapper-define-hyper-like-ctl'
+  - `massmapper-define-hyper-like-ctlmeta'
+  - `massmapper-define-hyper-like-meta'
 
-or some of these EXPERIMENTAL! functions:
+  or some of these EXPERIMENTAL! functions:
 
-- `massmapper-define-althyper-like-ctlmeta'
-- `massmapper-define-altsuper-like-ctlmeta'
-- `massmapper-define-hypersuper-like-ctlmeta'
-- `massmapper-protect-ret-and-tab'"
+  - `massmapper-define-althyper-like-ctlmeta'
+  - `massmapper-define-altsuper-like-ctlmeta'
+  - `massmapper-define-hypersuper-like-ctlmeta'
+  - `massmapper-conserve-ret-and-tab'"
   :type 'hook
   :options '(massmapper-homogenize
              massmapper-define-super-like-ctl
@@ -201,31 +225,31 @@ or some of these EXPERIMENTAL! functions:
              massmapper-define-althyper-like-ctlmeta
              massmapper-define-altsuper-like-ctlmeta
              massmapper-define-hypersuper-like-ctlmeta
-             massmapper-protect-ret-and-tab)
+             massmapper-conserve-ret-and-tab)
   :group 'massmapper)
 
 (defvar massmapper--known-keymaps '(global-map)
   "List of named keymaps seen active.
-This typically gets populated (by `massmapper-record-keymap-maybe') with
-just mode maps, rarely (never?) those used as transient maps and never
-so-called prefix commands like `Control-X-prefix', nor the category
-of sub-keymaps like `ctl-x-map' or `help-map.'")
+  This typically gets populated (by `massmapper-record-keymap-maybe') with
+  just mode maps, rarely (never?) those used as transient maps and never
+  so-called prefix commands like `Control-X-prefix', nor the category
+  of sub-keymaps like `ctl-x-map' or `help-map.'")
 
 (defvar massmapper--known-keymap-composites nil
   "List of unique keymap composites seen active.
-These are identified by their hashes; each one was a product
-of (abs (sxhash (current-active-maps))), called in different
-places and times.")
+  These are identified by their hashes; each one was a product
+  of (abs (sxhash (current-active-maps))), called in different
+  places and times.")
 
 (defun massmapper-record-keymap-maybe (&optional _)
   "If Emacs has seen new keymaps, record them in a variable.
-This simply checks the output of `current-active-maps' and adds
-to `massmapper--known-keymaps' anything not already added.  Every time
-we find one or more new keymaps, trigger `massmapper-keymap-found-hook'.
+  This simply checks the output of `current-active-maps' and adds
+  to `massmapper--known-keymaps' anything not already added.  Every time
+  we find one or more new keymaps, trigger `massmapper-keymap-found-hook'.
 
-Suitable to hook on `window-buffer-change-functions' like this:
+  Suitable to hook on `window-buffer-change-functions' like this:
 
-\(add-hook 'window-buffer-change-functions #'massmapper-record-keymap-maybe)"
+  \(add-hook 'window-buffer-change-functions #'massmapper-record-keymap-maybe)"
   (let* ((maps (current-active-maps))
          (composite-hash (abs (sxhash maps))))
     ;; Make sure we only iterate the expensive `help-fns-find-keymap-name' once
@@ -244,13 +268,13 @@ Suitable to hook on `window-buffer-change-functions' like this:
         ;; list or with `equal', I expect it to take much more CPU time to
         ;; compare their raw values instead of simply their symbols.  The user
         ;; is likely to set options that refer to `global-map'.  Therefore,
-        ;; ensure we use that name everywhere by prepopulating `massmapper--known-keymaps'
-        ;; with `global-map' and removing `widget-global-map' in this step.  As
-        ;; a bonus, user won't need to see and be puzzled by `widget-global-map'
-        ;; in M-x massmapper-list-remaps.  These shenanigans wouldn't be necessary if
-        ;; keymap values contained a canonical symbol name (and we could
-        ;; eliminate the function `help-fns-find-keymap-name'), but IDK if
-        ;; upstream would like that.
+        ;; ensure we use that name everywhere by prepopulating
+        ;; `massmapper--known-keymaps' with `global-map' and removing
+        ;; `widget-global-map' in this step.  As a bonus, user won't need to see
+        ;; and be puzzled by `widget-global-map' in M-x massmapper-list-remaps.
+        ;; These shenanigans wouldn't be necessary if keymap values contained a
+        ;; canonical symbol name (and we could eliminate the expensive function
+        ;; `help-fns-find-keymap-name'), but IDK if upstream would like that.
         (setq new-maps (remove 'widget-global-map new-maps))
 
         ;; Rare situation, and maybe it's only iedit that has this hack, but the
@@ -258,11 +282,12 @@ Suitable to hook on `window-buffer-change-functions' like this:
         ;; `iedit-occurrence-keymap-default', and we should work strictly with
         ;; the latter.  I assume we should do likewise all similar cases, so
         ;; just recursively evaluate all such "indirect variables".  Especially
-        ;; in that example, it's appropriate since the former is a buffer-local
-        ;; variable that sometimes actually evaluates to a (buffer-local) keymap
-        ;; instead of a symbol, which is why it's picked up by
-        ;; `current-active-maps' even though some of the time it isn't even a
-        ;; keymap.  Were Elisp statically typed, this wouldn't ever happen.
+        ;; in that example, it's appropriate since it additionally has the odd
+        ;; behavior that the former is a buffer-local variable that sometimes
+        ;; actually evaluates to a (buffer-local) keymap instead of a symbol,
+        ;; which is why it's sometimes picked up by `current-active-maps'.  Were
+        ;; Elisp statically typed, we wouldn't ever have to watch for strange
+        ;; usages like this.
         (setq new-maps
               (cl-loop for map in new-maps
                        collect (cl-loop
@@ -273,7 +298,8 @@ Suitable to hook on `window-buffer-change-functions' like this:
         (setq new-maps (-difference new-maps massmapper--known-keymaps))
 
         (when new-maps
-          (setq massmapper--known-keymaps (append new-maps massmapper--known-keymaps))
+          (setq massmapper--known-keymaps
+                (append new-maps massmapper--known-keymaps))
           (run-hooks 'massmapper-keymap-found-hook))))))
 
 
@@ -315,25 +341,26 @@ Suitable to hook on `window-buffer-change-functions' like this:
 
 (defun massmapper--how-define-a-like-b-in-keymap (recipient-mod donor-mod map)
   "Return actions needed to clone one set of keys to another set.
-Inside keymap MAP, take all keys and key sequences that contain
-DONOR-MOD \(a substring such as \"C-\"\), replace the substring
-wherever it occurs in favor of RECIPIENT-MOD \(a substring such
-as \"H-\"\), and assign them to the same commands.
+  Inside keymap MAP, take all keys and key sequences that contain
+  DONOR-MOD \(a substring such as \"C-\"\), replace the substring
+  wherever it occurs in favor of RECIPIENT-MOD \(a substring such
+  as \"H-\"\), and assign them to the same commands.
 
-Key sequences that already contain RECIPIENT-MOD are ignored,
-even if they also contain DONOR-MOD."
+  Key sequences that already contain RECIPIENT-MOD are ignored,
+  even if they also contain DONOR-MOD."
   (cl-loop
    with actions = nil
    with case-fold-search = nil
    with reason = (concat "Define " recipient-mod " like " donor-mod)
-   with raw-map = (massmapper--raw-keymap map)
-   for vec being the key-seqs of raw-map using (key-bindings cmd)
-   as key = (key-description vec)
+   for vec being the key-seqs of (massmapper--raw-keymap map)
+   using (key-bindings cmd)
+   as key = (massmapper--normalize (key-description vec))
    when (and cmd
              (string-search donor-mod key)
              (not (string-search recipient-mod key)))
-   do (let ((recipient (string-replace donor-mod recipient-mod key)))
-        (if (lookup-key-ignore-too-long raw-map (kbd recipient))
+   do (let ((recipient (massmapper--normalize
+                        (string-replace donor-mod recipient-mod key))))
+        (if (massmapper--lookup map recipient t)
             (and (> massmapper-debug-level 0)
                  (message "User bound key, leaving it alone: %s in %S"
                           recipient
@@ -352,7 +379,7 @@ even if they also contain DONOR-MOD."
   "Copy all bindings starting with DONOR-MOD to RECIPIENT-MOD."
   (cl-loop
    for map in (-difference massmapper--known-keymaps
-                           (alist-get recipient-mod
+                           (alist-get (intern recipient-mod)
                                       massmapper--reflected-maps-per-mod))
    as start = (current-time)
    as actions = (massmapper--how-define-a-like-b-in-keymap
@@ -367,7 +394,7 @@ even if they also contain DONOR-MOD."
       recipient-mod
       map
       (length actions)))
-   do (push map (alist-get recipient-mod
+   do (push map (alist-get (intern recipient-mod)
                            massmapper--reflected-maps-per-mod))))
 
 (defun massmapper-define-super-like-ctl ()
@@ -408,37 +435,37 @@ even if they also contain DONOR-MOD."
 
 (defun massmapper-define-althyper-like-ctlmeta ()
   "Experimental!
-Copy all Control-Meta bindings so they exist also on Meta-Super."
+  Copy all Control-Meta bindings so they exist also on Meta-Super."
   (massmapper--define-a-like-b-everywhere "A-H-" "C-M-"))
 
 (defun massmapper-define-altsuper-like-ctlmeta ()
   "Experimental!
-Copy all Control-Meta bindings so they exist also on Meta-Super."
+  Copy all Control-Meta bindings so they exist also on Meta-Super."
   (massmapper--define-a-like-b-everywhere "A-s-" "C-M-"))
 
 (defun massmapper-define-hypersuper-like-ctlmeta ()
   "Experimental!
-Copy all Control-Meta bindings so they exist also on Meta-Super."
+  Copy all Control-Meta bindings so they exist also on Meta-Super."
   (massmapper--define-a-like-b-everywhere "H-s-" "C-M-"))
 
 
 ;;; Lightweight alternative to Super as Ctl: sanitize some control chars
 
-(defvar massmapper--tabret-protected-keymaps nil)
+(defvar massmapper--keymaps-conserving-tabret nil)
 
 (defcustom massmapper-Cm-Ci-override nil
-  "Alist of bindings to bind after running `massmapper-protect-ret-and-tab'.
-The alist should follow this structure:
+  "Alist of bindings to bind after running `massmapper-conserve-ret-and-tab'.
+  The alist should follow this structure:
 
-\(\(KEYMAP . \(\(KEY . COMMAND)
-            \(KEY . COMMAND)
-            ...))
- \(KEYMAP . \(\(KEY . COMMAND)
-            \(KEY . COMMAND)
-            ...))
- ...)
+  \(\(KEYMAP . \(\(KEY . COMMAND)
+\(KEY . COMMAND)
+...))
+\(KEYMAP . \(\(KEY . COMMAND)
+\(KEY . COMMAND)
+...))
+...)
 
-After `massmapper-protect-ret-and-tab' has operated on a given KEYMAP,
+After `massmapper-conserve-ret-and-tab' has operated on a given KEYMAP,
 it will apply the bindings in the associated sublist -- i.e. bind
 each KEY to COMMAND.
 
@@ -450,20 +477,39 @@ put in any keys that don't involve C-m or C-i."
           :value-type (alist :key-type key
                              :value-type (sexp :tag "Command"))))
 
-(defun massmapper--how-protect-ret-and-tab (map)
+(defun massmapper--ends-in-ret (keydesc)
+  (or (string-suffix-p "RET" keydesc)
+      (let ((last (car (last (split-string keydesc " " t)))))
+        (and (string-search "C-" last)
+             (string-suffix-p "m" last)))))
+
+(defun massmapper--ends-in-tab (keydesc)
+  (or (string-suffix-p "TAB" keydesc)
+      (let ((last (car (last (split-string keydesc " " t)))))
+        (and (string-search "C-" last)
+             (string-suffix-p "i" last)))))
+
+(defun massmapper--how-conserve-ret-and-tab (map)
   "Actions for conserving Return and Tab behavior in MAP."
   (cl-loop
    with case-fold-search = nil
    with raw-map = (massmapper--raw-keymap map)
    for vec being the key-seqs of raw-map using (key-bindings cmd)
-   as key = (key-description vec)
+   as key = (massmapper--normalize (key-description vec))
    as modernized-key = (massmapper--modernize key)
    as action =
    (unless (equal modernized-key key)
-     (let ((olddef (lookup-key-ignore-too-long raw-map (kbd modernized-key))))
+     (let ((olddef (massmapper--lookup map modernized-key)))
        (unless (equal cmd olddef)
          (list :keydesc modernized-key
-               :cmd cmd
+               :cmd (if (equal cmd #'self-insert-command)
+                        (if (massmapper--ends-in-tab key)
+                            #'massmapper-ins-tab
+                          (if (massmapper--ends-in-ret key)
+                              #'massmapper-ins-ret
+                            cmd)
+                          cmd)
+                      cmd)
                :map map
                :reason "Conserve behavior of Return & Tab keys"
                :olddef olddef))))
@@ -478,39 +524,53 @@ put in any keys that don't involve C-m or C-i."
                  :cmd cmd
                  :map map
                  :reason "User specified in massmapper-Cm-Ci-override"
-                 :olddef (lookup-key-ignore-too-long raw-map (kbd key)))))
+                 :olddef (massmapper--lookup map key))))
+
+;; Note that the following two commands come into play less often than you
+;; might think.
+(defun massmapper-ins-ret (&optional arg)
+  "Ersatz self-insert-command for <return>."
+  (interactive "P")
+  (newline arg t))
+
+(defun massmapper-ins-tab (&optional arg)
+  "Ersatz self-insert-command for <tab>."
+  (interactive "P")
+  (insert-tab arg))
+
+;; (global-set-key (kbd "<tab>") #'self-insert-command)
+;; (global-set-key (kbd "<tab>") #'massmapper-ins-tab)
+;; (global-set-key (kbd "<tab>") #'indent-for-tab-command)
 
 ;; EXPERIMENTAL
-(defun massmapper-protect-ret-and-tab ()
+;; TODO: vertico-map binds TAB but not <tab>, why isn't it getting bound?
+(defun massmapper-conserve-ret-and-tab ()
   "Experimental.
 In every keymap, look for keys involving C-m or RET, and C-i or
-TAB, and copy their bindings onto the function keys <return> and
-<tab>.  This permits you to then bind C-m and C-i to other
-commands under GUI Emacs without clobbering the Return and Tab
-keys' behavior.
+TAB, and copy their bindings onto the keys that instead involve
+the function keys <return> and <tab>.  This permits you to then
+bind C-m and C-i to other commands under GUI Emacs without
+clobbering the Return and Tab keys' behavior.
+
+Be warned: on the TTY, they would still get clobbered.
 
 Note that you have to defer binding your shiny new C-m and C-i
 commands by specifying them in `massmapper-Cm-Ci-override',
 instead of calling `define-key' yourself."
   (cl-loop
    for map in (-difference massmapper--known-keymaps
-                           massmapper--tabret-protected-keymaps)
+                           massmapper--keymaps-conserving-tabret)
    as start = (current-time)
-   as actions = (massmapper--how-protect-ret-and-tab map)
-   as overwritten = (cl-loop
-                     for action in actions
-                     when (plist-get action :olddef)
-                     count action)
+   as actions = (massmapper--how-conserve-ret-and-tab map)
    when actions do
    (massmapper-execute actions)
    (when (> massmapper-debug-level 0)
-     (message "(In %.3fs) Protected RET and TAB in %S: %d new bindings and %d overwrites"
+     (message "(In %.3fs) Conserved RET and TAB in %S: %d new bindings"
               (float-time (time-since start))
               map
-              (- (length actions) overwritten)
-              overwritten))
+              (length actions)))
    do
-   (push map massmapper--tabret-protected-keymaps)
+   (push map massmapper--keymaps-conserving-tabret)
    (let* ((rebind-start (current-time))
           (rebind-actions (massmapper--how-rebind-Cm-Ci map))
           (rebind-overwrites (cl-loop for action in rebind-actions
@@ -519,17 +579,20 @@ instead of calling `define-key' yourself."
      (when rebind-actions
        (massmapper-execute rebind-actions)
        (when (> massmapper-debug-level 0)
-         (message "(In %.3fs) Bound keys involving C-m/C-i in %S: %d new bindings and %d overwrites"
+         (message "(In %.3fs) Bound keys per -Cm-Ci-override in %S: %d new bindings and %d overwrites"
                   (float-time (time-since rebind-start))
                   map
                   (- (length rebind-actions) rebind-overwrites)
                   rebind-overwrites))))))
 
 ;; To test:
-;; (setq foo (massmapper--how-protect-ret-and-tab 'global-map))
-;; (setq bar (massmapper--how-protect-ret-and-tab 'vertico-map))
+;; (setq foo (massmapper--how-conserve-ret-and-tab 'global-map))
+;; (setq bar (massmapper--how-conserve-ret-and-tab 'vertico-map))
 ;; (massmapper-execute foo)
 ;; (massmapper-execute bar)
+
+(define-obsolete-variable-alias 'massmapper-protect-ret-and-tab
+  'massmapper-conserve-ret-and-tab "2023-11-06")
 
 
 ;;; Homogenizing
@@ -569,8 +632,8 @@ only inside KEYMAP.
 KEYMAP should be a major or minor mode map.  It will likely have
 no effect if it is a so-called named prefix-command such as
 Control-X-prefix or kmacro-keymap (you can find these with
-`describe-function', whereas you can't find org-mode-map, as
-that's a proper mode map)."
+                                       `describe-function', whereas you can't find org-mode-map, as
+                                       that's a proper mode map)."
   :type '(repeat (cons (sexp :tag "Key sequence (in quotes) or command (unquoted)")
                        (symbol :tag "Keymap (nil means all keymaps)")))
   :group 'massmapper
@@ -579,7 +642,7 @@ that's a proper mode map)."
     (set-default
      var (cl-loop for cell in new
                   collect (cons (if (stringp (car cell))
-                                    (key-description (kbd (car cell)))
+                                    (key-description (key-parse (car cell)))
                                   (car cell))
                                 (cdr cell))))))
 
@@ -600,18 +663,17 @@ of functioning inside basic terminal emulators, TTYs and ssh
 connections.  We have a clean solution in
 `massmapper-define-super-like-ctl' and never pressing the Control key
 again in our lives.  Alternatively, we have an untested partial
-solution in `massmapper-protect-ret-and-tab'.
+solution in `massmapper-conserve-ret-and-tab'.
 
 If you don't apply the solution, it pays to know this: always
 bind the function key <tab> instead of the control character TAB,
-<return> instead of RET, <escape> instead of ESC, <linefeed>
-instead of LFD, <backspace> instead of DEL, and <delete> instead
-of BS.  GUI Emacs always looks up the function key if bound, and
-only falls back to the control character if the function key is
-unbound.  The function keys may not work on the terminal/TTY, but
-neither do Super, Hyper or many other niceties, and I recommend
-just using chemacs to run a barebone Emacs for the odd time
-you're on the TTY.
+<return> instead of RET, and <escape> instead of ESC.  GUI Emacs
+always looks up the function key if bound, and only falls back to
+the control character if the function key is unbound.  The
+function keys may not work on the terminal/TTY, but neither do
+Super, Hyper or many other niceties, and I recommend just using
+chemacs to run a barebone Emacs for the odd time you're on the
+TTY.
 
 While it is possible to rescue C-i and C-m from the mummified
 hands of Unix, you cannot ever use C-\[ as anything other than an
@@ -636,190 +698,195 @@ a situation when C-g is not available for the usual
   (-map #'char-to-string
         (string-to-list "AÄÂÀÁBCÇDEËÊÈÉFGHIÏÎÌÍJKLMNOÖÔÒÓPQRSTUÜÛÙÚVWXYZØÆÅÞẞ"))
   "List of capital letters, non-exhaustive.
-Keys involving one of these will be ignored by
-`massmapper--how-homogenize-key-in-keymap' because Emacs treats
-Control-chords as case-insensitive.
+  Keys involving one of these will be ignored by
+  `massmapper--how-homogenize-key-in-keymap' because Emacs treats
+  Control-chords as case-insensitive.
 
-In principle, we could permit capitals for other chords than
-Control -- email or file a GitHub issue if this interests you."
+  In principle, we could permit capitals for other chords than
+  Control -- email or file a GitHub issue if this interests you."
   :group 'massmapper
   :type '(repeat string))
 
 (defconst massmapper--homogenize-ignore-regexp
   "Regexp matching keys to skip homogenizing.
-These include keys such as <help> which simply clutter up the
-output of \\[massmapper-list-remaps]."
+  These include keys such as <help> which simply clutter up the
+  output of \\[massmapper-list-remaps]."
   (regexp-opt massmapper--ignore-keys-irrelevant))
 
 ;; NOTE: must return either nil or a list
-(defun massmapper--how-homogenize-key-in-keymap (this-key keymap)
+(defun massmapper--how-homogenize-key-in-keymap (this-key this-cmd keymap)
   "Return the action to homogenize THIS-KEY in KEYMAP.
+THIS-CMD is expected to be the command to which THIS-KEY is
+mapped, so the function need not look it up for itself.
+
 See `massmapper-homogenizing-winners' for explanation."
   (unless (stringp this-key)
     (error "Expected `kbd'-compatible string: %s" this-key))
-  (let* ((raw-map (massmapper--raw-keymap keymap))
-         (this-cmd (lookup-key-ignore-too-long raw-map (kbd this-key)))
-         (case-fold-search nil)) ;; hopefully boosts performance
-    (when (> massmapper-debug-level 1)
-      (when (and this-cmd (not (functionp this-cmd)) (symbolp this-cmd))
-        (message "Found non-function symbol binding: %s" this-cmd))
-      (when (keymapp this-cmd)
-        (message "Found keymap at: %s in %S" this-key keymap)))
-    (and
-     this-cmd
-     ;; Use symbolp, not functionp, b/c of not-yet-defined commands, e.g. when
-     ;; initfiles bind an eshell command globally but eshell hasn't loaded.
-     (symbolp this-cmd)
-     (not (massmapper--key-seq-steps=1 this-key)) ; nothing to homogenize
-     ;; There's no sense to homogenizing e.g. <f1> C-f because you'd never do
-     ;; C-<f1> to start the sequence.  As a bonus, this assumption simplifies
-     ;; functions like `massmapper--ensure-permachord'.  Although you could make
-     ;; the case that we'd want to homogenize all subsequences after <f1>,
-     ;; i.e. ensure <f1> C-f is duplicated to <f1> f, but that's so rare we can
-     ;; just offload the work on to the user if it's important to them.
-     (massmapper--key-starts-with-modifier this-key)
-     (not (massmapper--nightmare-p this-key))
-     ;; HACK: ignore capital letters because binding C-x C-K also binds C-x C-k
-     ;; (think there's a setting to control case sensitivity since Emacs 27 or
-     ;; so -- we need to check its value), messing up the expected binding
-     ;; there.  The specific example of C-x C-K comes from a Doom Emacs binding
-     ;; of C-x K, and the error is caused by the fact that unlike other
-     ;; modifiers, control-bindings are always case insensitive! See (info
-     ;; "(emacs)Modifier Keys") TL;DR: fix pending: If Control, ignore
-     ;; shiftsyms.  For other modifiers, check case sensitivity first.
-     (not (massmapper--key-contains massmapper-all-upcase-letters this-key))
-     ;; Drop bastard sequences
-     (not (and (massmapper--key-has-more-than-one-chord this-key)
-               (not (massmapper--permachord-p this-key))))
-     (let* (;; NOTE: we filtered out "bastard sequences",
-            ;; so we don't bother to ensure the alternative is a chordonce.
-            (this-is-permachord (massmapper--permachord-p this-key))
-            (permachord-key
-             (if this-is-permachord
-                 this-key
-               (massmapper--ensure-permachord this-key)))
-            (permachord-cmd
-             (if this-is-permachord
-                 this-cmd
-               (lookup-key-ignore-too-long raw-map (kbd permachord-key))))
-            (chordonce-key
-             (if this-is-permachord
-                 (massmapper--ensure-chordonce this-key)
-               this-key))
-            (chordonce-cmd
-             (if this-is-permachord
-                 (lookup-key-ignore-too-long raw-map (kbd chordonce-key))
-               this-cmd))
-            (sibling-keydesc (if this-is-permachord
-                                 chordonce-key
-                               permachord-key))
-            (sibling-cmd (if this-is-permachord
-                             chordonce-cmd
-                           permachord-cmd))
-            (winners (->> massmapper-homogenizing-winners
-                          (-remove #'cdr) ;; drop items with a keymap
-                          (-map #'car)))
-            ;; Here we'd have run into issue fixed at
-            ;; `massmapper-record-keymap-maybe'.
-            (winners-for-this-keymap (->> massmapper-homogenizing-winners
-                                          (-select #'cdr)
-                                          (--select (equal keymap (cdr it)))
-                                          (-map #'car))))
+  ;; let ((case-fold-search nil)) ;; hopefully boosts performance
+  (when (>= massmapper-debug-level 2)
+    ;; NOTE: these debug messages don't mean anything is wrong
+    (when (and this-cmd (not (functionp this-cmd)) (symbolp this-cmd))
+      (message "Massmapper found symbol binding not (yet) a function: %s" this-cmd))
+    (when (keymapp this-cmd)
+      (message "Massmapper found keymap at: %s in %S" this-key keymap)))
+  (and
+   this-cmd
+   ;; Use symbolp, not functionp, b/c of not-yet-defined commands, e.g. when
+   ;; initfiles bind an eshell command globally but eshell hasn't loaded.
+   (symbolp this-cmd)
+   (not (massmapper--key-seq-steps=1 this-key)) ; nothing to homogenize
+   ;; There's no sense to homogenizing e.g. <f1> C-f because you'd never do
+   ;; C-<f1> to start the sequence.  As a bonus, this assumption simplifies
+   ;; functions like `massmapper--ensure-permachord'.  Although you could make
+   ;; the case that we'd want to homogenize all subsequences after <f1>,
+   ;; i.e. ensure <f1> C-f is duplicated to <f1> f, but that's so rare we can
+   ;; just offload the work on to the user if it's important to them.
+   (massmapper--key-starts-with-modifier this-key)
+   (not (massmapper--nightmare-p this-key))
+   ;; HACK: ignore capital letters because binding C-x C-K also binds C-x C-k
+   ;; (think there's a setting to control case sensitivity since Emacs 27 or
+   ;; so -- we need to check its value), messing up the expected binding
+   ;; there.  The specific example of C-x C-K comes from a Doom Emacs binding
+   ;; of C-x K, and the error is caused by the fact that unlike other
+   ;; modifiers, control-bindings are always case insensitive! See (info
+   ;; "(emacs)Modifier Keys") TL;DR: fix pending: If Control, ignore
+   ;; shiftsyms.  For other modifiers, check case sensitivity first.
+   (not (massmapper--key-contains massmapper-all-upcase-letters this-key))
+   ;; Drop bastard sequences
+   (not (and (massmapper--key-has-more-than-one-chord this-key)
+             (not (massmapper--permachord-p this-key))))
+   (let* (;; NOTE: we filtered out "bastard sequences",
+          ;; so we don't bother to ensure the alternative is a chordonce.
+          (this-is-permachord (massmapper--permachord-p this-key))
+          (permachord-key
+           (if this-is-permachord
+               this-key
+             (massmapper--ensure-permachord this-key)))
+          (permachord-cmd
+           (if this-is-permachord
+               this-cmd
+             ;; it's expected and ok that lookup-key definitely can return
+             ;; numeric values here (on account of nested keymaps that don't
+             ;; yet exist)
+             (massmapper--lookup keymap permachord-key t)))
+          (chordonce-key
+           (if this-is-permachord
+               (massmapper--ensure-chordonce this-key)
+             this-key))
+          (chordonce-cmd
+           (if this-is-permachord
+               (massmapper--lookup keymap chordonce-key t)
+             this-cmd))
+          (sibling-keydesc (if this-is-permachord
+                               chordonce-key
+                             permachord-key))
+          (sibling-cmd (if this-is-permachord
+                           chordonce-cmd
+                         permachord-cmd))
+          (winners (->> massmapper-homogenizing-winners
+                        (-remove #'cdr) ;; drop items with a keymap
+                        (-map #'car)))
+          ;; Here we'd have run into issue fixed at
+          ;; `massmapper-record-keymap-maybe'.
+          (winners-for-this-keymap (->> massmapper-homogenizing-winners
+                                        (-select #'cdr)
+                                        (--select (equal keymap (cdr it)))
+                                        (-map #'car))))
 
-       (cond
-        ;; Simple case #1: This key or the sibling key has already been dealt
-        ;; with.  Then we just no-op.
-        ;; TODO: May need fixing, I think the clause always fails now, but it
-        ;; hasn't affected function.  Maybe just remove the clause?
-        ;; ((equal keymap (nth 2 (or
-        ;;                        (assoc sibling-keydesc massmapper--remap-record)
-        ;;                        (assoc this-key massmapper--remap-record))))
-        ;;  nil)
+     (cond
+      ;; Simple case #1: This key or the sibling key has already been dealt
+      ;; with.  Then we just no-op.
+      ;; TODO: May need fixing, I think the clause always fails now, but it
+      ;; hasn't affected function.  Maybe just remove the clause?
+      ;; ((equal keymap (nth 2 (or
+      ;;                        (assoc sibling-keydesc massmapper--remap-record)
+      ;;                        (assoc this-key massmapper--remap-record))))
+      ;;  nil)
 
-        ;; Simple case #2: only one of the two is bound, so just duplicate to
-        ;; the other.  We don't need to do it both directions, b/c this
-        ;; invocation is operating on this-key, which must be the one known to
-        ;; have a command.
-        ((null sibling-cmd)
-         (list :keydesc sibling-keydesc
-               :cmd this-cmd
-               :map keymap
-               :reason "Homogenize: clone to unbound sibling"
-               :olddef sibling-cmd))
+      ;; Simple case #2: only one of the two is bound, so just duplicate to
+      ;; the other.  We don't need to do it both directions, b/c this
+      ;; invocation is operating on this-key, which must be the one known to
+      ;; have a command.
+      ((null sibling-cmd)
+       (list :keydesc sibling-keydesc
+             :cmd this-cmd
+             :map keymap
+             :reason "Homogenize: clone to unbound sibling"
+             :olddef sibling-cmd))
 
-        ;; Complex case: both keys have a command, which do we choose?
-        ;; Eeny meny miny moe...?  No.  Let's start by checking if one of
-        ;; them is a specified winner, then fall back on a rule.
-        ((functionp sibling-cmd)
-         (cond ((< 1 (length
-                      (-non-nil
-                       (list (member sibling-keydesc winners-for-this-keymap)
-                             (member sibling-cmd winners-for-this-keymap)
-                             (member this-key winners-for-this-keymap)
-                             (member this-cmd winners-for-this-keymap)))))
-                (warn "Found a contradiction in massmapper-homogenizing-winners.")
-                nil)
+      ;; Complex case: both keys have a command, which do we choose?
+      ;; Eeny meny miny moe...?  No.  Let's start by checking if one of
+      ;; them is a specified winner, then fall back on a rule.
+      ((functionp sibling-cmd)
+       (cond ((< 1 (length
+                    (-non-nil
+                     (list (member sibling-keydesc winners-for-this-keymap)
+                           (member sibling-cmd winners-for-this-keymap)
+                           (member this-key winners-for-this-keymap)
+                           (member this-cmd winners-for-this-keymap)))))
+              (warn "Found a contradiction in massmapper-homogenizing-winners.")
+              nil)
 
-               ((or (member sibling-keydesc winners-for-this-keymap)
-                    (member sibling-cmd winners-for-this-keymap))
-                (list :keydesc this-key
-                      :cmd sibling-cmd
-                      :map keymap
-                      :reason "Homogenize: winning sibling overwrites this"
-                      :olddef this-cmd))
+             ((or (member sibling-keydesc winners-for-this-keymap)
+                  (member sibling-cmd winners-for-this-keymap))
+              (list :keydesc this-key
+                    :cmd sibling-cmd
+                    :map keymap
+                    :reason "Homogenize: winning sibling overwrites this"
+                    :olddef this-cmd))
 
-               ((or (member this-key winners-for-this-keymap)
-                    (member this-cmd winners-for-this-keymap))
-                (list :keydesc sibling-keydesc
-                      :cmd this-cmd
-                      :map keymap
-                      :reason "Homogenize: preset winner overwrites sibling"
-                      :olddef sibling-cmd))
+             ((or (member this-key winners-for-this-keymap)
+                  (member this-cmd winners-for-this-keymap))
+              (list :keydesc sibling-keydesc
+                    :cmd this-cmd
+                    :map keymap
+                    :reason "Homogenize: preset winner overwrites sibling"
+                    :olddef sibling-cmd))
 
-               ((< 1 (length
-                      (-non-nil
-                       (list (member sibling-keydesc winners)
-                             (member sibling-cmd winners)
-                             (member this-key winners)
-                             (member this-cmd winners)))))
-                ;; Leave it on the user to fix this mess.
-                (warn "Found a contradiction in massmapper-homogenizing-winners.")
-                nil)
+             ((< 1 (length
+                    (-non-nil
+                     (list (member sibling-keydesc winners)
+                           (member sibling-cmd winners)
+                           (member this-key winners)
+                           (member this-cmd winners)))))
+              ;; Leave it on the user to fix this mess.
+              (warn "Found a contradiction in massmapper-homogenizing-winners.")
+              nil)
 
-               ((or (member sibling-keydesc winners)
-                    (member sibling-cmd winners))
-                (list :keydesc this-key
-                      :cmd sibling-cmd
-                      :map keymap
-                      :reason "Homogenize: winning sibling overwrites this"
-                      :olddef this-cmd))
+             ((or (member sibling-keydesc winners)
+                  (member sibling-cmd winners))
+              (list :keydesc this-key
+                    :cmd sibling-cmd
+                    :map keymap
+                    :reason "Homogenize: winning sibling overwrites this"
+                    :olddef this-cmd))
 
-               ((or (member this-key winners)
-                    (member this-cmd winners))
-                (list :keydesc sibling-keydesc
-                      :cmd this-cmd
-                      :map keymap
-                      :reason "Homogenize: preset winner overwrites sibling"
-                      :olddef sibling-cmd))
+             ((or (member this-key winners)
+                  (member this-cmd winners))
+              (list :keydesc sibling-keydesc
+                    :cmd this-cmd
+                    :map keymap
+                    :reason "Homogenize: preset winner overwrites sibling"
+                    :olddef sibling-cmd))
 
-               ;; Neither key and neither command is rigged to win, so take
-               ;; the default action.  (Back when we had the boolean
-               ;; massmapper-permachord-wins-homogenizing, this was the only place
-               ;; it'd apply)
-               (t
-                (list :keydesc permachord-key
-                      :cmd chordonce-cmd
-                      :map keymap
-                      :reason "Homogenize: chord-once overwrites perma-chord"
-                      :olddef permachord-cmd))))
+             ;; Neither key and neither command is rigged to win, so take
+             ;; the default action.  (Back when we had the boolean
+             ;; massmapper-permachord-wins-homogenizing, this was the only place
+             ;; it'd apply)
+             (t
+              (list :keydesc permachord-key
+                    :cmd chordonce-cmd
+                    :map keymap
+                    :reason "Homogenize: chord-once overwrites perma-chord"
+                    :olddef permachord-cmd))))
 
-        ;; Default.
-        (t
-         (list :keydesc permachord-key
-               :cmd chordonce-cmd
-               :map keymap
-               :reason "Homogenize: chord-once overwrites perma-chord"
-               :olddef permachord-cmd)))))))
+      ;; Default.
+      (t
+       (list :keydesc permachord-key
+             :cmd chordonce-cmd
+             :map keymap
+             :reason "Homogenize: chord-once overwrites perma-chord"
+             :olddef permachord-cmd))))))
 
 (defvar massmapper--homogenized-keymaps nil
   "Keymaps that have been homogenized.")
@@ -828,7 +895,8 @@ See `massmapper-homogenizing-winners' for explanation."
   "Actions for homogenizing most of keymap MAP."
   (cl-loop
    for vec being the key-seqs of (massmapper--raw-keymap map)
-   as key = (key-description vec)
+   using (key-bindings cmd)
+   as key = (massmapper--normalize (key-description vec))
    ;; REVIEW: consider pre-filtering the keymap with nonessential filters
    ;; like these--avoid clobbering things the user could ignore anyway?
    ;; (not (member this-cmd '(self-insert-command
@@ -841,24 +909,26 @@ See `massmapper-homogenizing-winners' for explanation."
    ;; (not (massmapper--key-mixes-modifiers this-key))
    as action =
    (unless (string-match-p massmapper--homogenize-ignore-regexp key)
-     (massmapper--how-homogenize-key-in-keymap key map))
+     (massmapper--how-homogenize-key-in-keymap key cmd map))
    when action collect action))
+
+;; (setq foo (massmapper--how-homogenize-keymap 'global-map))
 
 (defun massmapper-homogenize ()
   "Homogenize all keymaps.
-What this means is that we forbid any difference between
-\"similar\" key sequences such as C-x C-e and C-x e; we bind both
-to the same command, so it won’t matter if you keep holding down
-Control or not, after initiating that key sequence.
+  What this means is that we forbid any difference between
+  \"similar\" key sequences such as C-x C-e and C-x e; we bind both
+  to the same command, so it won’t matter if you keep holding down
+  Control or not, after initiating that key sequence.
 
-The \"master copy\" is the one with fewer chords, i.e. C-x e,
-whose binding overrides the one on C-x C-e.  This can be
-customized on a case-by-case basis in `massmapper-homogenizing-winners'.
+  The \"master copy\" is the one with fewer chords, i.e. C-x e,
+  whose binding overrides the one on C-x C-e.  This can be
+  customized on a case-by-case basis in `massmapper-homogenizing-winners'.
 
-Why we would do something so hare-brained?  It supports
-cross-training with the Deianira input paradigm, which by design
-cannot represent a difference between such key sequences.  Learn
-more at:  https://github.com/meedstrom/deianira"
+  Why we would do something so hare-brained?  It supports
+  cross-training with the Deianira input paradigm, which by design
+  cannot represent a difference between such key sequences.  Learn
+  more at:  https://github.com/meedstrom/deianira"
   (cl-loop
    for map in (-difference massmapper--known-keymaps
                            massmapper--homogenized-keymaps)
@@ -866,7 +936,7 @@ more at:  https://github.com/meedstrom/deianira"
    as actions = (massmapper--how-homogenize-keymap map)
    as overwritten = (cl-loop
                      for action in actions
-                     when (string-search "overwrite" (plist-get action :reason))
+                     when (plist-get action :olddef)
                      count action)
    when actions do
    (massmapper-execute actions)
@@ -877,6 +947,110 @@ more at:  https://github.com/meedstrom/deianira"
               (- (length actions) overwritten)
               overwritten))
    do (push map massmapper--homogenized-keymaps)))
+
+;; I have the feeling this refactor is ape-brain.  After all, prepping prefix
+;; maps happens the first time we encounter a key that needs one, i.e. a nested
+;; key. See use of -has-non-prefix-in-prefix.  Maybe it's just that not enough
+;; is happening. Maybe it needs to actively call make-sparse-keymap.
+;; (defun massmapper--how-homogenize-keymap (map)
+;;   "Actions for homogenizing most of keymap MAP."
+;;   (let ((key-seqs-by-length
+;;          (cl-loop
+;;           with grand-list = nil
+;;           for vec being the key-seqs of (massmapper--raw-keymap map)
+;;           as key = (massmapper--normalize (key-description vec))
+;;           as length = (massmapper--key-seq-steps-length key)
+;;           do (push key (alist-get length grand-list))
+;;           finally return grand-list)))
+;;     ;; Do the shorter sequences first so prefix maps exist and won't make
+;;     ;; `lookup-key' cry.  Hopefully.
+;;     (dotimes (i (length key-seqs-by-length))
+;;       (let ((actions
+;;              (cl-loop
+;;               for key in (alist-get (1+ i) key-seqs-by-length)
+;;               ;; REVIEW: consider pre-filtering the keymap with nonessential filters
+;;               ;; like these--avoid clobbering things the user could ignore anyway?
+;;               ;; (not (member this-cmd '(self-insert-command
+;;               ;;                         ignore
+;;               ;;                         ignore-event
+;;               ;;                         company-ignore)))
+;;               ;; (not (string-match-p dei--shift-chord-regexp this-key))
+;;               ;; (not (massmapper--key-contains dei--all-shifted-symbols-list this-key))
+;;               ;; (not (massmapper--key-contains-multi-chord this-key))
+;;               ;; (not (massmapper--key-mixes-modifiers this-key))
+;;               as action =
+;;               (unless (string-match-p massmapper--homogenize-ignore-regexp key)
+;;                 (massmapper--how-homogenize-key-in-keymap key map))
+;;               when action collect action)))
+;;         (massmapper-execute actions)
+;;         actions)))
+
+;;   ;; (cl-sort
+;;   ;;  (cl-loop
+;;   ;;   for vec being the key-seqs of (massmapper--raw-keymap map)
+;;   ;;   as key = (key-description vec)
+;;   ;;   ;; REVIEW: consider pre-filtering the keymap with nonessential filters
+;;   ;;   ;; like these--avoid clobbering things the user could ignore anyway?
+;;   ;;   ;; (not (member this-cmd '(self-insert-command
+;;   ;;   ;;                         ignore
+;;   ;;   ;;                         ignore-event
+;;   ;;   ;;                         company-ignore)))
+;;   ;;   ;; (not (string-match-p dei--shift-chord-regexp this-key))
+;;   ;;   ;; (not (massmapper--key-contains dei--all-shifted-symbols-list this-key))
+;;   ;;   ;; (not (massmapper--key-contains-multi-chord this-key))
+;;   ;;   ;; (not (massmapper--key-mixes-modifiers this-key))
+;;   ;;   as action =
+;;   ;;   (unless (string-match-p massmapper--homogenize-ignore-regexp key)
+;;   ;;     (massmapper--how-homogenize-key-in-keymap key map))
+;;   ;;   when action collect action)
+;;   ;;  ;; Do the shorter sequences first so prefix maps exist and won't make
+;;   ;;  ;; `lookup-key' cry.  Hopefully.  On second thought it prolly makes no
+;;   ;;  ;; difference.  We need to chunk up the key-seqs by key seq step length and
+;;   ;;  ;; call how-homogenize and execute for seqs of length 1 before we start to
+;;   ;;  ;; analyze seqs of length 2, and so on.
+;;   ;;  (lambda (a b)
+;;   ;;    (< (massmapper--key-seq-steps-length (plist-get a :keydesc))
+;;   ;;       (massmapper--key-seq-steps-length (plist-get b :keydesc)))))
+
+;;   )
+;; ;; (setq foo (massmapper--how-homogenize-keymap 'global-map))
+
+;; (defun massmapper-homogenize ()
+;;   "Homogenize all keymaps.
+;;   What this means is that we forbid any difference between
+;;   \"similar\" key sequences such as C-x C-e and C-x e; we bind both
+;;   to the same command, so it won’t matter if you keep holding down
+;;   Control or not, after initiating that key sequence.
+
+;;   The \"master copy\" is the one with fewer chords, i.e. C-x e,
+;;   whose binding overrides the one on C-x C-e.  This can be
+;;   customized on a case-by-case basis in `massmapper-homogenizing-winners'.
+
+;;   Why we would do something so hare-brained?  It supports
+;;   cross-training with the Deianira input paradigm, which by design
+;;   cannot represent a difference between such key sequences.  Learn
+;;   more at:  https://github.com/meedstrom/deianira"
+;;   (cl-loop
+;;    for map in (-difference massmapper--known-keymaps
+;;                            massmapper--homogenized-keymaps)
+;;    as start = (current-time)
+;;    as actions = (massmapper--how-homogenize-keymap map)
+;;    as overwritten = (cl-loop
+;;                      for action in actions
+;;                      when (plist-get action :olddef)
+;;                      count action)
+;;    when actions do
+;;    ;; (massmapper-execute actions)
+;;    (when (> massmapper-debug-level 0)
+;;      (message "(In %.3fs) Homogenized %S: %d new bindings and %d overwrites"
+;;               (float-time (time-since start))
+;;               map
+;;               (- (length actions) overwritten)
+;;               overwritten))
+;;    do (push map massmapper--homogenized-keymaps)))
+
+(define-obsolete-function-alias 'dei-homogenize-all-keymaps
+  'massmapper-homogenize "2023-10-30")
 
 (define-obsolete-function-alias 'massmapper-homogenize-all-keymaps
   'massmapper-homogenize "2023-10-30")

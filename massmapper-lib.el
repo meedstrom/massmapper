@@ -20,8 +20,9 @@
 ;; This file is not part of GNU Emacs.
 
 (require 'dash)
-(eval-when-compile (require 'cl-lib))
-(eval-when-compile (require 'subr-x))
+(require 'compat)
+(require 'cl-lib)
+(require 'subr-x)
 
 (defconst massmapper--ignore-keys-control-chars
   '("ESC" "C-["
@@ -33,7 +34,7 @@
     "mouse" "remap" "scroll-bar" "select" "switch" "state"
     "which-key" "corner" "divider" "edge" "header" "mode-line"
     "vertical-line" "frame" "open" "chord" "tool-bar" "fringe"
-    "touch" "margin" "pinch" "tab-bar" )
+    "touch" "margin" "pinch" "tab-bar" "menu-bar")
   "List of strings matching key events unlikely to matter to the
 user's keyboard setup.")
 
@@ -156,7 +157,7 @@ that, see `massmapper--key-contains-any'."
                     (1+ first-modifier-pos))))
 
 (defun massmapper--key-starts-with-modifier (keydesc)
-  "Return t if kEYDESC starts with a modifier."
+  "Return t if KEYDESC starts with a modifier."
   (declare (pure t) (side-effect-free t))
   (when-let ((first-modifier-pos
               (string-match-p massmapper--modifier-regexp-safe keydesc)))
@@ -165,7 +166,7 @@ that, see `massmapper--key-contains-any'."
 (defun massmapper--key-mixes-modifiers (keydesc)
   "Return t if KEYDESC has more than one kind of modifier.
 Does not catch shiftsyms such as capital letters; to check for
-those, see `massmapper--key-contains-any'.  Does catch e.g. C-S-<RET>."
+those, see `massmapper--key-contains-any'.  Does catch e.g. C-S-RET."
   (declare (pure t) (side-effect-free t))
   (let ((case-fold-search nil)
         (first-match-pos (string-match-p massmapper--modifier-regexp-safe
@@ -275,55 +276,21 @@ Trivial function, but useful for `mapcar' and friends."
 
 ;;;; Stuff used only by massmapper, not by deianira
 
-(defun massmapper--modernize (keydesc)
-  "Replace C-m with <return> and C-i with <tab> in KEYDESC.
-Takes care of all possible permutations, such as C-M-m, C-H-m,
-C-s-m, C-S-m, A-C-H-M-S-s-m..., as well as when RET/TAB is written
-instead of C-m/C-i."
-  (string-join
-   (cl-loop
-    for bit in (split-string keydesc " " t)
-    if (and (string-search "C-" bit)
-            (string-suffix-p "m" bit))
-    collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<return>")
-    ;; Special case: S-<tab> doesn't exist, instead it's named <backtab> or
-    ;; S-<iso-lefttab>.  Another special case is that in principle we could
-    ;; encounter a key C-I as an alias for C-S-i, but fortunately Control keys
-    ;; are always case-insensitive so I figure Emacs won't ever print out a
-    ;; keymap as having C-I bound.
-    else if (and (string-search "C-" bit)
-                 (string-search "S-" bit)
-                 (string-suffix-p "i" bit))
-    collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<iso-lefttab>")
-    else if (and (string-search "C-" bit)
-                 (string-suffix-p "i" bit))
-    collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<tab>")
-    else if (string-suffix-p "RET" bit)
-    collect (concat (substring bit 0 -3) "<return>")
-    else if (and (string-search "S-" bit)
-                 (string-suffix-p "TAB" bit))
-    collect (concat (substring bit 0 -3) "<iso-lefttab>")
-    else if (string-suffix-p "TAB" bit)
-    collect (concat (substring bit 0 -3) "<tab>")
-    else collect bit)
-   " "))
-
-;; (global-set-key (kbd "S-<iso-lefttab>") #'embark-act)
-;; (global-set-key (kbd "S-TAB") #'embark-act)
-
 (defun massmapper--key-seq-has-non-prefix-in-prefix (keymap keydesc)
   "Is any prefix of KEYDESC bound to a command?
-For example: C-x C-v is bound to a simple command by default, so if
+For example: C-x C-v is bound to a command by default, so if
 you attempt to bind C-x C-v C-x to a command, you get an error.
-So here we check for that.
+Here we check for that.
 
 If KEYDESC is for example C-x C-v C-x, return non-nil if either
-C-x or C-x C-v are bound to a command.  If both of them are bound
-to either nothing or a prefix map, it's okay, so return nil.
+C-x or C-x C-v are bound to a command.  Specifically, return the
+first of those key descriptions.  If both of them are bound to
+either nothing or a prefix map, it's okay, so return nil.
 
-Does not additionally check that KEYDESC is not itself a prefix
-map with children bound: that's another thing that can make KEYDESC
-unbindable.
+Note: Does not additionally check that the KEYDESC you passed is
+not itself bound to a prefix map with children bound, but that's
+another thing that can make it impossible to bind KEYDESC to a
+command.  (You may have to unbind all the children first).
 
 KEYMAP is the keymap in which to look."
   (let ((steps (split-string keydesc " "))
@@ -334,7 +301,7 @@ KEYMAP is the keymap in which to look."
       ;; time to understand wtf it's doing.
       (dotimes (i (- (length steps) 1))
         (let ((subseq (string-join (-take (1+ i) steps) " ")))
-          (when (lookup-key-ignore-too-long keymap (kbd subseq))
+          (when (massmapper--lookup keymap subseq t)
             (push subseq ret))))
       (car ret))))
 
@@ -411,5 +378,151 @@ be entirely unchorded."
     (string-join (cons (car steps)
                        (-map #'massmapper--get-leaf (cdr steps)))
                  " ")))
+
+;; it occurs to me this was unnecessary to split up, but well, at least it's
+;; recomposable code
+(defun massmapper--modernize (keydesc)
+  (massmapper--modernize-tab (massmapper--modernize-ret keydesc)))
+
+(defun massmapper--modernize-tab (keydesc)
+  "Replace C-i with <tab> in KEYDESC.
+Takes care of all possible permutations, such as C-M-i, C-S-i,
+C-s-i, A-C-H-M-S-s-i..., as well as when TAB is printed
+instead of C-i."
+  (declare (pure t) (side-effect-free t))
+  (string-join
+   (save-match-data
+     (cl-loop
+      for bit in (split-string keydesc " " t)
+      ;; Special case: S-<tab> doesn't exist, instead it's named <backtab> or
+      ;; S-<iso-lefttab>.  Another special case is that in principle we could
+      ;; encounter a key C-I as an alias for C-S-i, but fortunately Control keys
+      ;; are always case-insensitive so I figure Emacs won't ever print out a
+      ;; keymap as having C-I bound.
+      if (and (string-search "C-" bit)
+              (string-search "S-" bit)
+              (string-suffix-p "i" bit))
+      collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<iso-lefttab>")
+      else if (and (string-search "C-" bit)
+                   (string-suffix-p "i" bit))
+      collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<tab>")
+      else if (and (string-search "S-" bit)
+                   (string-suffix-p "TAB" bit))
+      collect (concat (substring bit 0 -3) "<iso-lefttab>")
+      else if (string-suffix-p "TAB" bit)
+      collect (concat (substring bit 0 -3) "<tab>")
+      else collect bit))
+   " "))
+
+(defun massmapper--modernize-ret (keydesc)
+  "Replace C-m with <return> in KEYDESC.
+Takes care of all possible permutations, such as C-M-m, C-H-m,
+C-s-m, C-S-m, A-C-H-M-S-s-m..., as well as when RET is printed
+instead of C-m."
+  (declare (pure t) (side-effect-free t))
+  (string-join
+   (save-match-data
+     (cl-loop
+      for bit in (split-string keydesc " " t)
+      if (and (string-search "C-" bit)
+              (string-suffix-p "m" bit))
+      collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<return>")
+      else if (string-suffix-p "RET" bit)
+      collect (concat (substring bit 0 -3) "<return>")
+      else collect bit))
+   " "))
+
+;; (define-key org-mode-map "<tab>" (lookup-key org-mode-map "TAB"))
+;; (define-key org-mode-map "<tab>" (keymap-lookup org-mode-map "TAB"))
+;; (massmapper--modernize "TAB")
+;; (global-set-key (kbd "S-<iso-lefttab>") #'embark-act)
+;; (global-set-key (kbd "S-TAB") #'embark-act)
+
+
+;; TODO: Maybe test reimplementing kmu-lookup-local-key (which strips the
+;; parents from MAP). Could it fix some errors / strange behaviors?
+;;
+;; https://github.com/tarsius/keymap-utils/blob/main/keymap-utils.el
+;;
+;; Could be cool to make an experimental branch that uses as many kmu functions
+;; as possible. Then talk to tarsius about maybe merging with some of massmapper-lib.
+;; (require 'keymap-utils)
+
+
+
+;; having S- instead of a capital is disallowed!
+;; (lookup-key global-map (key-parse "C-S-x <return> p")) ;; invalid
+;; (lookup-key global-map (key-parse "C-X <return> p")) ;; valid
+;; and yet... (key-valid-p "C-S-x <return> p").  so key-valid-p accepts some
+;; things that lookup-key won't.
+
+;; and then this pair... notably, even though "s-S-<backspace>" fails
+;; key-valid-p, lookup-key will cope with it just fine.
+
+;; (lookup-key global-map (key-parse "s-S-<backspace>")) ;; valid
+;; (lookup-key global-map (key-parse "s-S-<backspace> p")) ;; invalid
+(defun massmapper--normalize (keydesc)
+  "Reform KEYDESC to pass both `key-valid-p' and `lookup-key'.
+Assumes KEYDESC was output by `key-description', which
+already normalizes some aspects of it."
+  (declare (pure t) (side-effect-free t))
+  (save-match-data
+    (string-join
+     (cl-loop
+      with case-fold-search = nil
+      for step in (split-string keydesc " " t)
+      as last-key = (massmapper--last-key step)
+      as chords = (substring step 0 (- (length last-key)))
+      collect
+      (progn
+        ;; Replace S- with a capital if the last key is alphabetic
+        (when (and (string-search "S-" chords)
+                   (and (string-match-p "^[[:alpha:]]+$" last-key)
+                        (not (string-match-p "[[:upper:]]" last-key))))
+          (setq chords (string-replace "S-" "" chords))
+          (setq last-key (upcase last-key)))
+        ;; Reorder modifiers so they follow A-C-H-M-S-s.  Key insight: that's
+        ;; just an alphabetic sort.
+        (setq chords
+              (thread-first chords
+                            (string-split "-" t)
+                            (sort #'string-lessp)
+                            (string-join "-")))
+        (concat chords (unless (string-empty-p chords) "-") last-key)))
+     " ")))
+
+;; (massmapper--normalize "s-S-<backspace>")
+;; (massmapper--normalize "H-A-C-S-i")
+;; (massmapper--normalize "s-c H-A-p 4 a")
+
+;; TODO: Deprecate.  It's mainly for debugging; now that I've understood things,
+;; can just wrap keymap-lookup in ignore-errors.  Although what if there's a
+;; numeric return at some point?  Guess it's still more idiomatic to check at
+;; the caller.
+(cl-defun massmapper--lookup (map key &optional no-warn-numeric no-warn-invalid)
+  "Variant of Emacs 29 `keymap-lookup', with different behavior."
+  (declare (compiler-macro (lambda (form) (keymap--compile-check key) form)))
+
+  (unless no-warn-invalid
+    ;; Instead of signaling an error, prefer to keep trying to bind most
+    ;; bindings, since most attempts usually work.  Giving up at the first error
+    ;; can leave an user stranded without the keys they're used to.
+    (with-demoted-errors "%s"
+      (keymap--check key)))
+
+  (let* ((raw-map (massmapper--raw-keymap map))
+         ;; (raw-map (kmu--strip-keymap (massmapper--raw-keymap map)))
+         (value (lookup-key raw-map (key-parse key))))
+    ;; It's good for debugging to know when `lookup-key' returns numeric, so warn.
+    (if (numberp value)
+        (prog1 nil
+          (unless no-warn-numeric
+            (warn "Massmapper: lookup-key returned numeric value for %s in %S"
+                  key
+                  (if (symbolp map)
+                      map
+                    (help-fns-find-keymap-name map)))))
+      ;; an oversight in upstream: didn't pass keymap to `command-remapping'
+      (or (command-remapping value nil raw-map) value))))
 
 (provide 'massmapper-lib)
