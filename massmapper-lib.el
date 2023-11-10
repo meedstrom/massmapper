@@ -174,8 +174,8 @@ those, see `massmapper--key-contains-any'.  Does catch e.g. C-S-RET."
     (when first-match-pos
       (let* (;; Compensate if `massmapper--modifier-regexp-safe' matched a dash
              ;; or space preceding the actual modifier.
-             (first-match-pos (if (zerop first-match-pos)
-                                  first-match-pos
+             (first-match-pos (if (= 0 first-match-pos)
+                                  0
                                 (1+ first-match-pos)))
              (caught (substring keydesc first-match-pos (1+ first-match-pos)))
              (mods '("A" "C" "H" "M" "S" "s"))
@@ -196,25 +196,6 @@ Tiny trivial function, but useful for `mapcar' and ilk."
 Useful predicate for `seq-sort-by' or `cl-sort'."
   (declare (pure t) (side-effect-free t))
   (length (split-string keydesc " ")))
-
-(defun massmapper--key-seq-is-permachord (keydesc)
-  "If sequence KEYDESC has one chord on every step, return t.
-This chord must be the same throughout the sequence."
-  (declare (pure t) (side-effect-free t))
-  (when (> (length keydesc) 2)
-    (let* ((first-2-chars (substring keydesc 0 2))
-           (root-modifier (when (string-suffix-p "-" first-2-chars)
-                            first-2-chars)))
-      (when root-modifier
-        (not (cl-loop
-              for step in (split-string keydesc " ")
-              unless (and
-                      (> (length step) 2)
-                      (string-prefix-p root-modifier
-                                       (substring step 0 2))
-                      (not (string-match-p massmapper--modifier-regexp-safe
-                                           (substring step 2))))
-              return t))))))
 
 (defun massmapper--stem-to-parent-keydesc (stem)
   "Return a valid key by trimming STEM from the right.
@@ -388,21 +369,24 @@ be entirely unchorded."
   "Replace C-i with <tab> in KEYDESC.
 Takes care of all possible permutations, such as C-M-i, C-S-i,
 C-s-i, A-C-H-M-S-s-i..., as well as when TAB is printed
-instead of C-i."
+instead of C-i.
+
+Assumes KEYDESC is normalized by:
+\(massmapper--normalize \(key-description \(key-parse key\)\)\)"
   (declare (pure t) (side-effect-free t))
   (string-join
    (save-match-data
      (cl-loop
       for bit in (split-string keydesc " " t)
       ;; Special case: S-<tab> doesn't exist, instead it's named <backtab> or
-      ;; S-<iso-lefttab>.  Another special case is that in principle we could
-      ;; encounter a key C-I as an alias for C-S-i, but fortunately Control keys
-      ;; are always case-insensitive so I figure Emacs won't ever print out a
-      ;; keymap as having C-I bound.
+      ;; S-<iso-lefttab>.
       if (and (string-search "C-" bit)
               (string-search "S-" bit)
               (string-suffix-p "i" bit))
       collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<iso-lefttab>")
+      else if (and (string-search "C-" bit)
+                   (string-suffix-p "I" bit))
+      collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<backtab>")
       else if (and (string-search "C-" bit)
                    (string-suffix-p "i" bit))
       collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<tab>")
@@ -425,19 +409,17 @@ instead of C-m."
      (cl-loop
       for bit in (split-string keydesc " " t)
       if (and (string-search "C-" bit)
+              (string-suffix-p "M" bit))
+      collect (massmapper--normalize
+               (concat (string-replace "C-" "" (substring bit 0 -1))
+                       "S-<return>"))
+      if (and (string-search "C-" bit)
               (string-suffix-p "m" bit))
       collect (concat (string-replace "C-" "" (substring bit 0 -1)) "<return>")
       else if (string-suffix-p "RET" bit)
       collect (concat (substring bit 0 -3) "<return>")
       else collect bit))
    " "))
-
-;; (define-key org-mode-map "<tab>" (lookup-key org-mode-map "TAB"))
-;; (define-key org-mode-map "<tab>" (keymap-lookup org-mode-map "TAB"))
-;; (massmapper--modernize "TAB")
-;; (global-set-key (kbd "S-<iso-lefttab>") #'embark-act)
-;; (global-set-key (kbd "S-TAB") #'embark-act)
-
 
 ;; having S- instead of a capital is disallowed!
 ;; (lookup-key global-map (key-parse "C-S-x <return> p")) ;; invalid
@@ -450,6 +432,8 @@ instead of C-m."
 
 ;; (lookup-key global-map (key-parse "s-S-<backspace>")) ;; valid
 ;; (lookup-key global-map (key-parse "s-S-<backspace> p")) ;; invalid
+
+;; TODO: handle keydesc like "<tool-bar> C-<Forward in history>"
 (defun massmapper--normalize (keydesc)
   "Reform KEYDESC to pass both `key-valid-p' and `lookup-key'.
 Assumes KEYDESC was output by `key-description', which

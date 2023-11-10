@@ -7,7 +7,7 @@
 # notice and this notice are preserved.  This file is offered as-is,
 # without any warranty.
 
-# [[https://img.shields.io/badge/license-GPL3+-blue.png]]
+# [[https//img.shields.io/badge/license-GPL3+-blue.png]]
 
 The long-absent Emacs facility to systematically remap key bindings.
 
@@ -51,15 +51,15 @@ Hopefully the names are self-explanatory.  Add any one of these functions:
 
 and any one of:
 
-- =massmapper-define-hyper-like-ctl=
-- =massmapper-define-hyper-like-ctlmeta=
-- =massmapper-define-hyper-like-meta=
-
-and any one of:
-
 - =massmapper-define-alt-like-ctl=
 - =massmapper-define-alt-like-ctlmeta=
 - =massmapper-define-alt-like-meta=
+
+and any one of:
+
+- =massmapper-define-hyper-like-ctl=
+- =massmapper-define-hyper-like-ctlmeta=
+- =massmapper-define-hyper-like-meta=
 
 and any or all of (experimental):
 

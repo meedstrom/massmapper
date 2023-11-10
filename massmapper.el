@@ -433,6 +433,10 @@
   "Copy all Meta bindings so they exist also on Alt."
   (massmapper--define-a-like-b-everywhere "A-" "M-"))
 
+;; The following three technically have the problem of e.g. not picking up
+;; C-H-M- bindings as a C-M- binding because they have a H in between, but it
+;; will affect very little.
+
 (defun massmapper-define-althyper-like-ctlmeta ()
   "Experimental!
   Copy all Control-Meta bindings so they exist also on Meta-Super."
@@ -477,17 +481,25 @@ put in any keys that don't involve C-m or C-i."
           :value-type (alist :key-type key
                              :value-type (sexp :tag "Command"))))
 
+(defun massmapper--last-step (keydesc)
+  (declare (pure t) (side-effect-free t))
+  (replace-regexp-in-string ".* " "" keydesc))
+
+(defun massmapper--first-step (keydesc)
+  (declare (pure t) (side-effect-free t))
+  (replace-regexp-in-string " .*" "" keydesc))
+
 (defun massmapper--ends-in-ret (keydesc)
   (or (string-suffix-p "RET" keydesc)
-      (let ((last (car (last (split-string keydesc " " t)))))
-        (and (string-search "C-" last)
-             (string-suffix-p "m" last)))))
+      (let ((last (massmapper--last-step keydesc)))
+        (and (string-suffix-p "m" last)
+             (string-search "C-" last)))))
 
 (defun massmapper--ends-in-tab (keydesc)
   (or (string-suffix-p "TAB" keydesc)
-      (let ((last (car (last (split-string keydesc " " t)))))
-        (and (string-search "C-" last)
-             (string-suffix-p "i" last)))))
+      (let ((last (massmapper--last-step keydesc)))
+        (and (string-suffix-p "i" last)
+             (string-search "C-" last)))))
 
 (defun massmapper--how-conserve-ret-and-tab (map)
   "Actions for conserving Return and Tab behavior in MAP."
@@ -896,7 +908,7 @@ See `massmapper-homogenizing-winners' for explanation."
   (cl-loop
    for vec being the key-seqs of (massmapper--raw-keymap map)
    using (key-bindings cmd)
-   as key = (massmapper--normalize (key-description vec))
+   as key = (key-description vec)
    ;; REVIEW: consider pre-filtering the keymap with nonessential filters
    ;; like these--avoid clobbering things the user could ignore anyway?
    ;; (not (member this-cmd '(self-insert-command
@@ -908,7 +920,7 @@ See `massmapper-homogenizing-winners' for explanation."
    ;; (not (massmapper--key-contains-multi-chord this-key))
    ;; (not (massmapper--key-mixes-modifiers this-key))
    as action = (unless (string-match-p massmapper--homogenize-ignore-regexp key)
-                 (massmapper--how-homogenize-key-in-keymap key cmd map))
+                 (massmapper--how-homogenize-key-in-keymap (massmapper--normalize key) cmd map))
    when action collect action))
 
 (defun massmapper-homogenize ()
