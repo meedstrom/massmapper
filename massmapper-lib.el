@@ -433,36 +433,39 @@ instead of C-m."
 ;; (lookup-key global-map (key-parse "s-S-<backspace>")) ;; valid
 ;; (lookup-key global-map (key-parse "s-S-<backspace> p")) ;; invalid
 
-;; TODO: handle keydesc like "<tool-bar> C-<Forward in history>"
 (defun massmapper--normalize (keydesc)
   "Reform KEYDESC to pass both `key-valid-p' and `lookup-key'.
 Assumes KEYDESC was output by `key-description', which
 already normalizes some aspects of it."
   (declare (pure t) (side-effect-free t))
-  (save-match-data
-    (string-join
-     (cl-loop
-      with case-fold-search = nil
-      for step in (split-string keydesc " " t)
-      as last-key = (massmapper--last-key step)
-      as chords = (substring step 0 (- (length last-key)))
-      collect
-      (progn
-        ;; Replace S- with a capital if the last key is alphabetic
-        (when (and (string-search "S-" chords)
-                   (and (string-match-p "^[[:alpha:]]+$" last-key)
-                        (not (string-match-p "[[:upper:]]" last-key))))
-          (setq chords (string-replace "S-" "" chords))
-          (setq last-key (upcase last-key)))
-        ;; Reorder modifiers so they follow A-C-H-M-S-s.  Key insight: that's
-        ;; just an alphabetic sort.
-        (setq chords
-              (thread-first chords
-                            (string-split "-" t)
-                            (sort #'string-lessp)
-                            (string-join "-")))
-        (concat chords (unless (string-empty-p chords) "-") last-key)))
-     " ")))
+  (if (string-match-p "-bar>" keydesc)
+      ;; Don't bother with keys like "<tool-bar> C-<Forward in history>"
+      ;; or involving <menu-bar> or <tab-bar>
+      keydesc
+    (save-match-data
+      (string-join
+       (cl-loop
+        with case-fold-search = nil
+        for step in (split-string keydesc " " t)
+        as last-key = (massmapper--last-key step)
+        as chords = (substring step 0 (- (length last-key)))
+        collect
+        (progn
+          ;; Replace S- with a capital if the last key is alphabetic
+          (when (and (string-search "S-" chords)
+                     (and (string-match-p "^[[:alpha:]]+$" last-key)
+                          (not (string-match-p "[[:upper:]]" last-key))))
+            (setq chords (string-replace "S-" "" chords))
+            (setq last-key (upcase last-key)))
+          ;; Reorder modifiers so they follow A-C-H-M-S-s.  Key insight: that's
+          ;; just an alphabetic sort.
+          (setq chords
+                (thread-first chords
+                              (string-split "-" t)
+                              (sort #'string-lessp)
+                              (string-join "-")))
+          (concat chords (unless (string-empty-p chords) "-") last-key)))
+       " "))))
 
 ;; (massmapper--normalize "s-S-<backspace>")
 ;; (massmapper--normalize "H-A-C-S-i")
