@@ -43,22 +43,24 @@
 (require 'help-fns) ;; help-fns-find-keymap-name
 (require 'map) ;; map-let
 
-;; REVIEW: Verify that command remappings apply
+;; REVIEW: Verify that command-remappings apply
 
 ;; TODO: What to do about C-c C-x p  (org-set-property)?
 ;;       Because there is also C-c x p which copies to C-c C-x C-p.
 ;;       Maybe the user should be alerted to bastard sequences.
+;;       Any way homogenizing-winners can help?
 
 ;; TODO: Promote error signals, which currently get demoted to a "Error during
 ;;       redisplay" message (because of where we put the hook)
 
-;; TODO: Test binding keyboard macros and lambdas, and see if they get copied.
-;;       I don't never bind either, so it's worth a look.
-;;       https://www.gnu.org/software//emacs/manual/html_node/elisp/Key-Lookup.html
-;;       A keyboard macro is represented as a string or vector, a lambda is a
-;;       list with the symbol lambda as car.
-
 ;; TODO: Handle capitals and Shift just as well as any other mod
+
+;; FIXME: Test binding keyboard macros and lambdas, and see if they get copied.
+;;        I don't ever bind either, so it's worth a look.  Pretty sure it'll be
+;;        broken.
+;;        https://www.gnu.org/software//emacs/manual/html_node/elisp/Key-Lookup.html
+;;        A keyboard macro is represented as a string(!!!) or vector, a lambda
+;;        is a list with the symbol lambda as car.
 
 
 ;;; Basics
@@ -89,9 +91,9 @@
 
 (defun massmapper--pretty-print-def (def)
   "Return a string that tries to say what DEF refers to.
-  DEF should be a key definition such as that returned by
-  `lookup-key'; most of the time, it's a command, and then this
-  function simply returns its name."
+DEF should be a key definition such as that returned by
+`lookup-key'; most of the time, it's a command, and then this
+function simply returns its name."
   (cond ((symbolp def)
          (symbol-name def))
         ((keymapp def)
@@ -171,10 +173,10 @@
 
 (defun massmapper-revert ()
   "Experimental command to undo all remaps made.
-  It's recommended to just restart Emacs, but this might work.
+It's recommended to just restart Emacs, but this might work.
 
-  It won't restore everything: it's likely a few prefix keys
-  were unbound and will stay unbound."
+It won't restore everything: it's likely a few prefix keys
+were unbound and will stay unbound."
   (interactive)
   (cl-loop
    for item in massmapper--remap-record
@@ -190,27 +192,27 @@
 
 (defcustom massmapper-keymap-found-hook nil
   "Run after adding one or more keymaps to `massmapper--known-keymaps'.
-  See `massmapper-record-keymap-maybe', which triggers this hook.
+See `massmapper-record-keymap-maybe', which triggers this hook.
 
-  You may be interested in hooking some of these functions:
+You may be interested in hooking some of these functions:
 
-  - `massmapper-homogenize'
-  - `massmapper-define-super-like-ctl'
-  - `massmapper-define-super-like-ctlmeta'
-  - `massmapper-define-super-like-meta'
-  - `massmapper-define-alt-like-ctl'
-  - `massmapper-define-alt-like-ctlmeta'
-  - `massmapper-define-alt-like-meta'
-  - `massmapper-define-hyper-like-ctl'
-  - `massmapper-define-hyper-like-ctlmeta'
-  - `massmapper-define-hyper-like-meta'
+- `massmapper-homogenize'
+- `massmapper-define-super-like-ctl'
+- `massmapper-define-super-like-ctlmeta'
+- `massmapper-define-super-like-meta'
+- `massmapper-define-alt-like-ctl'
+- `massmapper-define-alt-like-ctlmeta'
+- `massmapper-define-alt-like-meta'
+- `massmapper-define-hyper-like-ctl'
+- `massmapper-define-hyper-like-ctlmeta'
+- `massmapper-define-hyper-like-meta'
 
-  or some of these EXPERIMENTAL! functions:
+or some of these EXPERIMENTAL! functions:
 
-  - `massmapper-define-althyper-like-ctlmeta'
-  - `massmapper-define-altsuper-like-ctlmeta'
-  - `massmapper-define-hypersuper-like-ctlmeta'
-  - `massmapper-conserve-ret-and-tab'"
+- `massmapper-define-althyper-like-ctlmeta'
+- `massmapper-define-altsuper-like-ctlmeta'
+- `massmapper-define-hypersuper-like-ctlmeta'
+- `massmapper-conserve-ret-and-tab'"
   :type 'hook
   :options '(massmapper-homogenize
              massmapper-define-super-like-ctl
@@ -230,24 +232,24 @@
 
 (defvar massmapper--known-keymaps '(global-map)
   "List of named keymaps seen active.
-  This typically gets populated (by `massmapper-record-keymap-maybe') with
-  just mode maps, rarely (never?) those used as transient maps and never
-  so-called prefix commands like `Control-X-prefix', nor the category
-  of sub-keymaps like `ctl-x-map' or `help-map.'")
+This typically gets populated (by `massmapper-record-keymap-maybe') with
+just mode maps, rarely (never?) those used as transient maps and never
+so-called prefix commands like `Control-X-prefix', nor the category
+of sub-keymaps like `ctl-x-map' or `help-map.'")
 
 (defvar massmapper--known-keymap-composites nil
   "List of unique keymap composites seen active.
-  These are identified by their hashes; each one was a product
-  of (abs (sxhash (current-active-maps))), called in different
-  places and times.")
+These are identified by their hashes; each one was a product
+of (abs (sxhash (current-active-maps))), called in different
+places and times.")
 
 (defun massmapper-record-keymap-maybe (&optional _)
   "If Emacs has seen new keymaps, record them in a variable.
-  This simply checks the output of `current-active-maps' and adds
-  to `massmapper--known-keymaps' anything not already added.  Every time
-  we find one or more new keymaps, trigger `massmapper-keymap-found-hook'.
+This simply checks the output of `current-active-maps' and adds
+to `massmapper--known-keymaps' anything not already added.  Every time
+we find one or more new keymaps, trigger `massmapper-keymap-found-hook'.
 
-  Suitable to hook on `window-buffer-change-functions' like this:
+Suitable to hook on `window-buffer-change-functions' like this:
 
   \(add-hook 'window-buffer-change-functions #'massmapper-record-keymap-maybe)"
   (let* ((maps (current-active-maps))
@@ -341,13 +343,13 @@
 
 (defun massmapper--how-define-a-like-b-in-keymap (recipient-mod donor-mod map)
   "Return actions needed to clone one set of keys to another set.
-  Inside keymap MAP, take all keys and key sequences that contain
-  DONOR-MOD \(a substring such as \"C-\"\), replace the substring
-  wherever it occurs in favor of RECIPIENT-MOD \(a substring such
-  as \"H-\"\), and assign them to the same commands.
+Inside keymap MAP, take all keys and key sequences that contain
+DONOR-MOD \(a substring such as \"C-\"\), replace the substring
+wherever it occurs in favor of RECIPIENT-MOD \(a substring such
+as \"H-\"\), and assign them to the same commands.
 
-  Key sequences that already contain RECIPIENT-MOD are ignored,
-  even if they also contain DONOR-MOD."
+Key sequences that already contain RECIPIENT-MOD are ignored,
+even if they also contain DONOR-MOD."
   (cl-loop
    with actions = nil
    with case-fold-search = nil
@@ -439,17 +441,17 @@
 
 (defun massmapper-define-althyper-like-ctlmeta ()
   "Experimental!
-  Copy all Control-Meta bindings so they exist also on Meta-Super."
+Copy all Control-Meta bindings so they exist also on Meta-Super."
   (massmapper--define-a-like-b-everywhere "A-H-" "C-M-"))
 
 (defun massmapper-define-altsuper-like-ctlmeta ()
   "Experimental!
-  Copy all Control-Meta bindings so they exist also on Meta-Super."
+Copy all Control-Meta bindings so they exist also on Meta-Super."
   (massmapper--define-a-like-b-everywhere "A-s-" "C-M-"))
 
 (defun massmapper-define-hypersuper-like-ctlmeta ()
   "Experimental!
-  Copy all Control-Meta bindings so they exist also on Meta-Super."
+Copy all Control-Meta bindings so they exist also on Meta-Super."
   (massmapper--define-a-like-b-everywhere "H-s-" "C-M-"))
 
 
@@ -459,9 +461,9 @@
 
 (defcustom massmapper-Cm-Ci-override nil
   "Alist of bindings to bind after running `massmapper-conserve-ret-and-tab'.
-  The alist should follow this structure:
+The alist should follow this structure:
 
-  \(\(KEYMAP . \(\(KEY . COMMAND)
+\(\(KEYMAP . \(\(KEY . COMMAND)
 \(KEY . COMMAND)
 ...))
 \(KEYMAP . \(\(KEY . COMMAND)
@@ -710,19 +712,19 @@ a situation when C-g is not available for the usual
   (-map #'char-to-string
         (string-to-list "AÄÂÀÁBCÇDEËÊÈÉFGHIÏÎÌÍJKLMNOÖÔÒÓPQRSTUÜÛÙÚVWXYZØÆÅÞẞ"))
   "List of capital letters, non-exhaustive.
-  Keys involving one of these will be ignored by
-  `massmapper--how-homogenize-key-in-keymap' because Emacs treats
-  Control-chords as case-insensitive.
+Keys involving one of these will be ignored by
+`massmapper--how-homogenize-key-in-keymap' because Emacs treats
+Control-chords as case-insensitive.
 
-  In principle, we could permit capitals for other chords than
-  Control -- email or file a GitHub issue if this interests you."
+In principle, we could permit capitals for other chords than
+Control -- email or file a GitHub issue if this interests you."
   :group 'massmapper
   :type '(repeat string))
 
 (defconst massmapper--homogenize-ignore-regexp
   "Regexp matching keys to skip homogenizing.
-  These include keys such as <help> which simply clutter up the
-  output of \\[massmapper-list-remaps]."
+These include keys such as <help> which simply clutter up the
+output of \\[massmapper-list-remaps]."
   (regexp-opt massmapper--ignore-keys-irrelevant))
 
 ;; NOTE: must return either nil or a list
@@ -925,19 +927,19 @@ See `massmapper-homogenizing-winners' for explanation."
 
 (defun massmapper-homogenize ()
   "Homogenize all keymaps.
-  What this means is that we forbid any difference between
-  \"similar\" key sequences such as C-x C-e and C-x e; we bind both
-  to the same command, so it won’t matter if you keep holding down
-  Control or not, after initiating that key sequence.
+What this means is that we forbid any difference between
+\"similar\" key sequences such as C-x C-e and C-x e; we bind both
+to the same command, so it won’t matter if you keep holding down
+Control or not, after initiating that key sequence.
 
-  The \"master copy\" is the one with fewer chords, i.e. C-x e,
-  whose binding overrides the one on C-x C-e.  This can be
-  customized on a case-by-case basis in `massmapper-homogenizing-winners'.
+The \"master copy\" is the one with fewer chords, i.e. C-x e,
+whose binding overrides the one on C-x C-e.  This can be
+customized on a case-by-case basis in `massmapper-homogenizing-winners'.
 
-  Why we would do something so hare-brained?  It supports
-  cross-training with the Deianira input paradigm, which by design
-  cannot represent a difference between such key sequences.  Learn
-  more at:  https://github.com/meedstrom/deianira"
+Why we would do something so hare-brained?  It supports
+cross-training with the Deianira input paradigm, which by design
+cannot represent a difference between such key sequences.  Learn
+more at:  https://github.com/meedstrom/deianira"
   (cl-loop
    for map in (-difference massmapper--known-keymaps
                            massmapper--homogenized-keymaps)
