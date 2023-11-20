@@ -1,7 +1,5 @@
 ;;; massmapper-lib.el -- Library for deianira and massmapper -*- lexical-binding: t; nameless-current-name: "massmapper"; -*-
 
-;; (read-symbol-shorthands . '("massmapper-" . "massmapper-lib-"))
-
 ;; Copyright (C) 2018-2023 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -38,20 +36,20 @@
   "List of strings matching key events unlikely to matter to the
 user's keyboard setup.")
 
-(defconst massmapper--modifier-regexp
+(defconst massmapper--modifier-re
   (regexp-opt '("A-" "C-" "H-" "M-" "S-" "s-"))
   "Regexp for any of the modifiers: \"C-\", \"M-\" etc.
 Upon match, the string segment it matched is always two characters long.
 
 Beware that it will also match a few obscure named function keys,
 such as <ns-drag-n-drop>, where it will match against s- in the
-ns- part.  To guard this, use `massmapper--modifier-regexp-safe'
+ns- part.  To guard this, use `massmapper--modifier-safe-re'
 instead, although that has its own flaws.")
 
-(defconst massmapper--modifier-regexp-safe
+(defconst massmapper--modifier-safe-re
   (rx (or "<" "-" bol " ")
       (or "A-" "C-" "H-" "M-" "S-" "s-"))
-  "Like `massmapper--modifier-regexp', but check a preceding character.
+  "Like `massmapper--modifier-re', but check a preceding character.
 Benefit: it will always match if there's at least one modifier,
 and not count spurious modifier-looking things such as
 <ns-drag-n-drop> which contains an \"s-\".
@@ -120,7 +118,7 @@ been normalized by (key-description (kbd KEY))!"
 Assumes KEYDESC was normalized by (key-description (kbd KEY))."
   (declare (pure t) (side-effect-free t))
   ;; assume keydesc was already normalized.
-  (string-match-p (rx (= 2 (regexp massmapper--modifier-regexp)))
+  (string-match-p (rx (= 2 (regexp massmapper--modifier-re)))
                   keydesc))
 
 (defun massmapper--key-contains (symlist keydesc)
@@ -149,10 +147,10 @@ Does not check for shifted symbols, such as capital letters.  For
 that, see `massmapper--key-contains-any'."
   (declare (pure t) (side-effect-free t))
   (when-let ((first-modifier-pos
-              (string-match-p massmapper--modifier-regexp-safe keydesc)))
+              (string-match-p massmapper--modifier-safe-re keydesc)))
     ;; We use +1 and not +2 b/c of the peculiarities of this regexp, but it
     ;; gets the job done.
-    (string-match-p massmapper--modifier-regexp-safe
+    (string-match-p massmapper--modifier-safe-re
                     keydesc
                     (1+ first-modifier-pos))))
 
@@ -160,19 +158,19 @@ that, see `massmapper--key-contains-any'."
   "Return t if KEYDESC starts with a modifier."
   (declare (pure t) (side-effect-free t))
   (when-let ((first-modifier-pos
-              (string-match-p massmapper--modifier-regexp-safe keydesc)))
+              (string-match-p massmapper--modifier-safe-re keydesc)))
     (zerop first-modifier-pos)))
 
 (defun massmapper--key-mixes-modifiers (keydesc)
   "Return t if KEYDESC has more than one kind of modifier.
 Does not catch shiftsyms such as capital letters; to check for
-those, see `massmapper--key-contains-any'.  Does catch e.g. C-S-RET."
+those, see `massmapper--key-contains'.  Does catch e.g. C-S-RET."
   (declare (pure t) (side-effect-free t))
   (let ((case-fold-search nil)
-        (first-match-pos (string-match-p massmapper--modifier-regexp-safe
+        (first-match-pos (string-match-p massmapper--modifier-safe-re
                                          keydesc)))
     (when first-match-pos
-      (let* (;; Compensate if `massmapper--modifier-regexp-safe' matched a dash
+      (let* (;; Compensate if `massmapper--modifier-safe-re' matched a dash
              ;; or space preceding the actual modifier.
              (first-match-pos (if (= 0 first-match-pos)
                                   0
@@ -205,9 +203,9 @@ example, inputting a STEM of \"C-x \" returns \"C-x\"."
   (declare (pure t) (side-effect-free t))
   (if (string-suffix-p " " stem)
       (substring stem 0 -1)
-    (if (string-match-p (concat massmapper--modifier-regexp "$") stem)
+    (if (string-match-p (concat massmapper--modifier-re "$") stem)
         (replace-regexp-in-string
-         (rx " " (+ (regexp massmapper--modifier-regexp)) eol)
+         (rx " " (+ (regexp massmapper--modifier-re)) eol)
          ""
          stem)
       (error "Non-stem passed to `massmapper--stem-to-parent-keydesc': %s"
@@ -277,13 +275,15 @@ KEYMAP is the keymap in which to look."
   (let ((steps (split-string keydesc " "))
         (ret nil))
     (when (> (length steps) 1)
-      ;; TODO: don't use dotimes, but some sort of "until" pattern.  This
-      ;; function is very un-Lispy right now.  You can tell, because it takes
-      ;; time to understand wtf it's doing.
+      ;; TODO: don't use dotimes, it's very un-Lispy
       (dotimes (i (- (length steps) 1))
-        (let ((subseq (string-join (-take (1+ i) steps) " ")))
-          (when (massmapper--lookup keymap subseq t)
-            (push subseq ret))))
+        (let* ((subseq (string-join (-take (1+ i) steps) " "))
+               (cmd? (massmapper--lookup keymap subseq t)))
+          (and cmd?
+               (or (commandp cmd?)
+                   (and (listp cmd?)
+                        (member (car cmd?) '(closure lambda))))
+               (push subseq ret))))
       (car ret))))
 
 (defun massmapper--root-modifier-chunk (keydesc)
@@ -295,7 +295,7 @@ nil."
   (let* ((first-item (car (split-string keydesc " ")))
          (last-mod-pos (save-match-data
                          (string-match
-                          (rx bol (* (regexp massmapper--modifier-regexp)))
+                          (rx bol (* (regexp massmapper--modifier-re)))
                           first-item)
                          (match-end 0))))
     (when (not (zerop last-mod-pos))
@@ -317,7 +317,7 @@ Assumes KEYDESC is a sequence, not a single key."
         (cl-loop
          for step in (split-string keydesc " ")
          if (or (not (string-prefix-p rootmod step))
-                (string-match-p massmapper--modifier-regexp-safe
+                (string-match-p massmapper--modifier-safe-re
                                 (substring step (length rootmod))))
          return nil
          else finally return t)))))
@@ -328,8 +328,8 @@ If it's already that, return it unmodified.
 
 The key sequence KEYDESC must not contain any modifiers that are
 not part of the first key in the sequence.  If it satisfies
-`massmapper--is-chordonce' or `massmapper--permachord-p', or
-dissatisfies `massmapper--key-mixes-modifiers', there'll be no problem."
+`massmapper--permachord-p' or dissatisfies `massmapper--key-mixes-modifiers',
+there'll be no problem."
   (declare (pure t) (side-effect-free t))
   (let ((rootmod (massmapper--root-modifier-chunk keydesc)))
     (if rootmod
@@ -338,11 +338,11 @@ dissatisfies `massmapper--key-mixes-modifiers', there'll be no problem."
           for step in (split-string keydesc " ")
           if (string-prefix-p rootmod step)
           collect step
-          and do (when (string-match-p massmapper--modifier-regexp-safe
+          and do (when (string-match-p massmapper--modifier-safe-re
                                        (substring step (length rootmod)))
                    (error "Key contains other modifiers: %s" keydesc))
           else collect (concat rootmod step)
-          and do (when (string-match-p massmapper--modifier-regexp-safe step)
+          and do (when (string-match-p massmapper--modifier-safe-re step)
                    (error "Key contains other modifiers: %s" keydesc)))
          " ")
       (warn "massmapper--ensure-permachord probably shouldn't be called on: %s"
