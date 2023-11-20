@@ -17,6 +17,18 @@
 
 ;; This file is not part of GNU Emacs.
 
+;;; Commentary:
+
+;; A library for working with key-descriptions.
+
+;; NOTE: most functions assume normalized input, and don't check!
+
+;; To normalize an unknown input, use
+
+;;   (massmapper--normalize (key-description (key-parse KEY)))
+
+;;; Code:
+
 (require 'dash)
 (require 'compat)
 (require 'cl-lib)
