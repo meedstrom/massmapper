@@ -114,25 +114,21 @@ results in a keymap."
 
 ;;;; Handlers for key descriptions
 
-(defun massmapper--last-key (single-key-or-chord)
-  "Return the last key in SINGLE-KEY-OR-CHORD.
-If it's not a chord, return the input unmodified.
+(defun massmapper--last-key (chord)
+  "Return the last key in CHORD.
+If it's not a chord but a single key, return it unmodified.
 
 USE WITH CARE.  Presupposes that the input has no spaces and has
 been normalized by (key-description (kbd KEY))!"
   (declare (pure t) (side-effect-free t))
-  (let ((s single-key-or-chord))
-    (cond ((or (string-search "--" s)
-               (string-match-p "-$" s)) ;; same thing given it's a single chord!
-           "-")
-          ((string-match-p "<$" s)
-           "<")
-          ((string-search "<" s)
-           (save-match-data
-             (string-match (rx "<" (* nonl) ">") s)
-             (match-string 0 s)))
-          (t
-           (car (last (split-string s "-" t)))))))
+  (cond ((string-match-p "-$" chord)
+         "-")
+        ((string-match-p "<$" chord)
+         "<")
+        ((when-let ((pos (string-match-p "<" chord)))
+           (substring chord pos)))
+        (t
+         (car (last (split-string chord "-" t))))))
 
 (defun massmapper--key-contains-multi-chord (keydesc)
   "Check if KEYDESC has C-M- or such simultaneous chords.
@@ -239,12 +235,72 @@ example, inputting a STEM of \"C-x \" returns \"C-x\"."
        (-last-item)
        (massmapper--last-key)))
 
+;; ;; an experiment in performance
+;; (defun massmapper--leaf-pos (keydesc)
+;;   (declare (pure t) (side-effect-free t))
+;;   (with-temp-buffer
+;;     (insert keydesc)
+;;     (goto-char (point-min))
+;;     (while (search-forward " " nil t))
+;;     (if (or (re-search-forward "-$" nil t)
+;;             (re-search-forward "<$" nil t)
+;;             (search-forward "<" nil t))
+;;         (- (point) 1)
+;;       (while (search-forward "-" nil t))
+;;       (point))))
+
+;; (defun massmapper--leaf-pos (keydesc)
+;;   (declare (pure t) (side-effect-free t))
+;;   (let* ((steps (string-split keydesc " "))
+;;          (step (replace-regexp-in-string ".* " "" keydesc))
+;;          (last-spc (string-match-p " " keydesc))
+
+;;          (last-dash (string-match-p "-" keydesc last-spc))
+;;          )
+;;     ;; eol
+;;     (or (string-match-p "[-<]$" step)
+;;         (string-match-p "<" step)
+
+;;         (replace-regexp-in-string ".*-" "" step)
+
+;;         )
+
+;;     last-dash
+
+;;     )
+;;   (if (or (re-search-forward "-$" nil t)
+;;           (re-search-forward "<$" nil t)
+;;           (search-forward "<" nil t))
+;;       (- (point) 1)
+;;     (while (search-forward "-" nil t))
+;;     (point))
+
+;;   (with-temp-buffer
+;;     (insert keydesc)
+;;     (goto-char (point-min))
+;;     (while (search-forward " " nil t))
+;;     ))
+
+
+;; (defun massmapper--drop-leaf (keydesc)
+;;   "Chop the leaf off KEYDESC and return the resulting stem."
+;;   (declare (pure t) (side-effect-free t))
+;;   (substring keydesc 0 (1- (massmapper--leaf-pos keydesc))))
+
+;; (let ((then (current-time)))
+;;   (dotimes (i 10000)
+;;     (massmapper--drop-leaf "C-M-x")
+;;     )
+
+;;   (float-time (time-since then)))
+
 (defun massmapper--drop-leaf (keydesc)
   "Chop the leaf off KEYDESC and return the resulting stem."
   (declare (pure t) (side-effect-free t))
-  (replace-regexp-in-string (rx (literal (massmapper--get-leaf keydesc)) eol)
-                            ""
-                            keydesc))
+  (replace-regexp-in-string
+   (concat (regexp-quote (massmapper--get-leaf keydesc)) "$")
+   ""
+   keydesc))
 
 (defun massmapper--parent-stem (stem)
   "Return a parent stem to STEM.
@@ -253,10 +309,20 @@ information-theoretic sense nested more deeply than \"C-s \", but
 speaking in terms of keymap nesting, they refer to the same
 sub-keymap.  As such, both of these return the same parent: \"C-\"."
   (declare (pure t) (side-effect-free t))
-  (if (or (= 2 (length stem))
-          (massmapper--key-seq-steps=1 stem))
-      nil
-    (massmapper--drop-leaf (massmapper--stem-to-parent-keydesc stem))))
+  (save-match-data
+    (if (or
+         ;; Detect "C-"
+         (= 2 (length stem))
+         ;; Detect "<f1> "
+         (and (= 1 (cl-count (string-to-char " ") stem))
+              (not (string-search "-" (car (split-string stem " "))))))
+        nil
+      (massmapper--drop-leaf (massmapper--stem-to-parent-keydesc stem)))))
+
+;; unused
+(defun massmapper--stem-is-one-key (stem)
+  (and (= 1 (cl-count (string-to-char " ") stem))
+       (not (string-search "-" (car (split-string stem " "))))))
 
 (defun massmapper--parent-key (keydesc)
   "Return immediate prefix of KEYDESC, or nil if it hasn't one."
