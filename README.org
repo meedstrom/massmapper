@@ -11,7 +11,7 @@
 
 The long-absent Emacs facility to systematically remap key bindings.
 
-Ever tried to "remap Control to Super", but found it much harder to do well than you thought, and gave up?  Then you're in luck, this package solves that kind of thing!
+Ever tried to "move Control to Super" inside Emacs, but found it much harder to do well than you thought, and gave up?  Then you're in luck, this package solves that kind of thing!
 
 * Install
 
@@ -37,11 +37,11 @@ It'll edit every keymap it finds, which it finds over time as your Emacs session
 
 * What to put on the hook?
 
-As of 2023-11-03, Massmapper ships three sorts of functions you can add to =massmapper-keymap-found-hook=.  The first sort is easy to explain, so we'll start with that:
+For now, Massmapper ships three categories of functions you can add to =massmapper-keymap-found-hook=.  The first category is easy to explain, so we'll start with that:
 
 ** Mirroring modifiers
 
-In these functions, the idea is to simply copy key bindings from one modifier, such as "C-", to another modifier, such as "H-".
+With the following functions, the idea is to simply copy key bindings from one modifier, such as "C-", to another modifier, such as "H-", so that both do the same thing.
 
 Hopefully the names are self-explanatory.  Add any one of these functions:
 
@@ -127,7 +127,7 @@ Even then, it can look clean to *bind only Control keys in your initfiles*, know
 
 I.e. to keep binding "C-" keys instead of "s-" keys.
 
-One advantage of doing so is that Control and Super then perfectly mirror each other, useful in the event Super has a service outage for any reason, like you install GNOME or you enter the TTY, or you plug in on a keyboard that lacks a Right Super key but has a Right Control.
+One advantage of doing so is that Control and Super then perfectly mirror each other, useful in the event Super has a service outage for any reason, like you install GNOME or you enter the TTY, or you plug in a keyboard that lacks a Right Super key but has a Right Control.
 
 There can be cases when you want a Super key to behave different from the Control key it was supposed to mirror.  In that case, simply bind it directly, and Massmapper will respect it.
 
@@ -138,6 +138,8 @@ Just mind that global-map is the lowest-priority keymap.  So if you want a new =
 *** Under the hood
 
 If you're curious about what the package does to your Emacs, it may be nice to set =(setq massmapper-debug-level 1)= for a while.
+
+Don't forget the command =M-x massmapper-list-remaps RET=.
 
 When you develop a package like this, you run into many gotchas.  I learned not to utilize key translations such as =(define-key key-translation-map (kbd "C-c") (kbd "s-c"))= even though they seem like a clean solution.
 
@@ -151,7 +153,7 @@ In your initfiles, it's safest to place your =(massmapper-mode)= invocation some
 
 This may sound like you should worry about key-bindings made inside =with-eval-after-load= and the like, but that's not a problem -- Massmapper will work correctly.
 
-Unless you do something like this:
+Unless you edit unrelated keymaps:
 
 #+begin_src elisp
 (with-eval-after-load 'eshell
@@ -161,7 +163,7 @@ Unless you do something like this:
 
 i.e. you add a binding to global-map only after eshell and helm have loaded.
 
-This is not the way.  Bind your keys in each map /as they come into existence/, and don't touch them from then on.  For global-map, that means bind everything at init time!
+This is not the way.  Bind your keys in each map /as they come into existence/, and don't touch them from then on.  Since global-map comes into existence at init time, make all modifications to it at init time!
 
 The above is better done as simply
 
@@ -169,7 +171,13 @@ The above is better done as simply
 (define-key global-map (kbd "M-r") #'helm-eshell-prompts-all)
 #+end_src
 
-and letting built-in autoloads load Helm and Eshell.  Then things that inspect keymaps, such as this package, always have the correct idea.
+and letting the built-in autoloads load Helm and Eshell.  That way, Massmapper always has the correct idea, plus it makes life easier for all packages that inspect keymaps for any reason.
+
+Expect autoloads to be present: if they aren't, that's a bug.  I'd wager that most cases of missing autoloads come from the way people use =use-package=, in which case see its =:commands= keyword, or you can put the following line together with the key definition (I've not had to do either):
+
+#+begin_src elisp
+(autoload #'helm-eshell-prompts-all "helm" t)
+#+end_src
 
 *** Gotcha: C-g is a hardcoded "unfreeze Emacs"
 
@@ -190,33 +198,47 @@ Aside from the above, some Emacs Lisp functions hardcode =C-g= as a "cancel" act
 (define-key input-decode-map (kbd "s-g") (kbd "C-g"))
 #+end_src
 
-In very rare cases, mainly =map-y-or-n-p= that I've seen, a function [[https://lists.gnu.org/archive/html/bug-gnu-emacs/2022-10/msg02195.html][actually uses read-event]] so that key-translations do nothing!  That's properly considered a bug and should be reported upstream.
+In very rare cases, mainly =map-y-or-n-p= that I've seen, a function [[https://lists.gnu.org/archive/html/bug-gnu-emacs/2022-10/msg02195.html][actually uses read-event instead of read-key]], so that key-translations do nothing!  That's properly considered a bug and should be reported upstream.
 
 *** Aside for developers
 
-*If you're an Emacs Lisp programmer* wondering what's the appropriate thing to do instead of referring to =C-g=, it's to create a minor or major mode map and just remap =keyboard-quit= in there, making no assumption about what the user has on C-g or where =keyboard-quit= may be. I.e. do this:
+*If you're an Emacs Lisp programmer* wondering what's the appropriate thing to do instead of referring to =C-g=, it's to create a minor or major mode map and do a command-remapping for =keyboard-quit= in there, making no assumptions. I.e. do this:
 
 #+begin_src elisp
 (defvar-keymap my-map)
-(define-key my-map [remap keyboard-quit] #'my-keyboard-quit-wrapper)
-;; if my-map may be activated in a minibuffer
-(define-key my-map [remap abort-recursive-edit] #'my-abort-recursive-edit-wrapper)
+(define-key my-map [remap keyboard-quit] #'my-wrapper-for-keyboard-quit)
+;; Also this, if `my-map' may be activated from within the minibuffer
+(define-key my-map [remap abort-recursive-edit] #'my-wrapper-for-abort-recursive-edit)
 #+end_src
 
-not this:
+NOT this:
 
 #+begin_src elisp
 (defvar-keymap my-map)
-(define-key my-map (kbd "C-g") #'my-special-cancel)
+(define-key my-map (kbd "C-g") #'my-special-cancel-command)
 #+end_src
 
-Note that your imaginary =my-keyboard-quit-wrapper= should probably call =keyboard-quit= itself at the end.
+Note that the imaginary command =my-wrapper-for-keyboard-quit= should probably call =keyboard-quit= itself at the end, like this example from my package [[https://github.com/meedstrom/asyncloop][asyncloop]]:
 
-If you must refer directly to a key in some custom interaction, avoid the demon functions =read-event=, =read-char= or =read-char-exclusive=, because they don't respect key translations!
+#+begin_src elisp
+(defun asyncloop-keyboard-quit ()
+  "Wrapper for `keyboard-quit' that also cancels all loops."
+  (interactive)
+  (unwind-protect
+      (asyncloop-reset-all)
+    (keyboard-quit)))
+#+end_src
 
-Use =read-key=, or higher-level functions such as =read-char-choice=, =read-multiple-choice=, =read-answer=, =read-char-from-minibuffer=, =y-or-n-p= etc.  See the Info manual chapter "(elisp)Reading Input".
+-----
 
-As an alternative, you can try to design your program in such a way that when a keyboard-quit comes, the right thing would happen automatically, but that's more art than science.
+If you are not able to use a major or minor mode map... just avoid these demon functions because they don't respect key translations:
+- =read-event=
+- =read-char=
+- =read-char-exclusive=
+
+Instead, use =read-key=, or higher-level functions such as =read-char-choice=, =read-multiple-choice=, =read-answer=, =read-char-from-minibuffer=, =y-or-n-p= etc.  See the Info manual chapter "(elisp)Reading Input".
+
+As an alternative, you can try to design your program in such a way that when a quit comes, the right thing would happen automatically, but that's more art than science.
 
 *** To users of which-key
 
