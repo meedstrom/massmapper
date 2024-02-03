@@ -521,13 +521,17 @@ instead of C-m."
 ;; (lookup-key global-map (key-parse "s-S-<backspace> p")) ;; invalid
 
 (defun massmapper--normalize (keydesc)
-  "Reform KEYDESC to pass both `key-valid-p' and `lookup-key'.
-Assumes KEYDESC was output by `key-description', which
-already normalizes some aspects of it."
+  "Reform KEYDESC to satisfy both `key-valid-p' and `lookup-key'.
+Assumes KEYDESC was output by `key-description', which already
+normalizes some aspects of it!  Therefore, to fully sanitize a
+keydesc of unknown origin, do
+
+\(massmapper--normalize \(key-description \(key-parse WILD-KEYDESC))).
+
+Will not modify keydescs involving <tool-bar>, <menu-bar> or
+<tab-bar>, because they have strange expressions."
   (declare (pure t) (side-effect-free t))
   (if (string-match-p "-bar>" keydesc)
-      ;; Don't bother with keys like "<tool-bar> C-<Forward in history>"
-      ;; or involving <menu-bar> or <tab-bar>
       keydesc
     (save-match-data
       (string-join
