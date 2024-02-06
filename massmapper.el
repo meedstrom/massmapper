@@ -19,10 +19,10 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.1.4-snapshot
+;; Version: 0.1.4
 ;; Keywords: convenience
 ;; Homepage: https://github.com/meedstrom/massmapper
-;; Package-Requires: ((emacs "24.4") (dash "2.19.1") (compat "29.1.4.3"))
+;; Package-Requires: ((emacs "24.4") (dash "2.19.1") (compat "29.1.4.4"))
 
 ;;; Commentary:
 
