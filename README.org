@@ -147,13 +147,13 @@ So what does Massmapper do?  It scans each and every keymap variable, such as =g
 
 *** Gotcha: bind now, not later
 
-In your initfiles, it's safest to place your =(massmapper-mode)= invocation somewhere /after/ all key-bindings are done.  If you don't have an excellent overview of your initfiles, after-init-hook is reasonable:
+In your initfiles, it's safest to place your =(massmapper-mode)= invocation /after/ all key-bindings are done.  If you have messy initfiles, after-init-hook is reasonable:
 
 : (add-hook 'after-init-hook #'massmapper-mode)
 
 This may sound like you should worry about key-bindings made inside =with-eval-after-load= and the like, but that's not a problem -- Massmapper will work correctly.
 
-Unless you edit unrelated keymaps:
+Unless you edit keymaps unrelated to the loaded package, like:
 
 #+begin_src elisp
 (with-eval-after-load 'eshell
