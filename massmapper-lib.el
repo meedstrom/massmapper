@@ -520,7 +520,15 @@ instead of C-m."
 ;; (lookup-key global-map (key-parse "s-S-<backspace>")) ;; valid
 ;; (lookup-key global-map (key-parse "s-S-<backspace> p")) ;; invalid
 
-(defun massmapper--normalize (keydesc)
+(defvar massmapper--cache (make-hash-table :size 2000 :test #'equal))
+(defun massmapper--normalize (key)
+  "Caching version of `massmapper--normalize-1'."
+  (let ((cached-value (gethash key massmapper--cache 'not-found)))
+    (if (eq 'not-found cached-value)
+        (puthash key (massmapper--normalize-1 key) massmapper--cache)
+      cached-value)))
+
+(defun massmapper--normalize-1 (keydesc)
   "Reform KEYDESC to satisfy both `key-valid-p' and `lookup-key'.
 Assumes KEYDESC was output by `key-description', which already
 normalizes some aspects of it!  Therefore, to fully sanitize a
@@ -529,9 +537,10 @@ keydesc of unknown origin, do
 \(massmapper--normalize \(key-description \(key-parse WILD-KEYDESC))).
 
 Will not modify keydescs involving <tool-bar>, <menu-bar> or
-<tab-bar>, because they have strange expressions."
+<tab-bar>, because they have nonstandard formats."
   (declare (pure t) (side-effect-free t))
-  (if (string-match-p "-bar>" keydesc)
+  (if (or (string-search "-bar>" keydesc)
+          (string-search ".." keydesc))
       keydesc
     (save-match-data
       (string-join
@@ -562,19 +571,21 @@ Will not modify keydescs involving <tool-bar>, <menu-bar> or
 ;; (massmapper--normalize "H-A-C-S-i")
 ;; (massmapper--normalize "s-c H-A-p 4 a")
 
+;; (keymap-lookup message-mode-map "<tool-bar> s-<Forward in history>")
 (cl-defun massmapper--lookup (map key &optional no-warn-numeric no-warn-invalid)
   "Variant of Emacs 29 `keymap-lookup', with different behavior."
   (declare (compiler-macro (lambda (form) (keymap--compile-check key) form)))
   (unless no-warn-invalid
     ;; Instead of signaling an error, prefer to keep trying to bind most
-    ;; bindings, since most attempts usually work.  Giving up at the first error
-    ;; can leave an user stranded without the keys they're used to.  So, just
-    ;; warn, don't error like `keymap-lookup' does.
+    ;; bindings, since most attempts usually work.  Giving up at the first
+    ;; error can leave an user stranded without the keys they're used to.  So,
+    ;; just warn, don't error like `keymap-lookup' does.
     (with-demoted-errors "%s"
       (keymap--check key)))
   (let* ((raw-map (massmapper--raw-keymap map))
          ;; (raw-map (kmu--strip-keymap (massmapper--raw-keymap map)))
-         (value (lookup-key raw-map (key-parse key))))
+         (value (with-demoted-errors "%s"
+                  (lookup-key raw-map (key-parse key)))))
     ;; Good debugging to know when `lookup-key' returns numeric, so warn.  At
     ;; the same time, return nil like `lookup-key-ignore-too-long' so I don't
     ;; have to handle this eventuality in every caller.
