@@ -351,29 +351,32 @@ as \"H-\"\), and assign them to the same commands.
 Key sequences that already contain RECIPIENT-MOD are ignored,
 even if they also contain DONOR-MOD."
   (cl-loop
-   with actions = nil
    with case-fold-search = nil
    with reason = (concat "Define " recipient-mod " like " donor-mod)
-   for vec being the key-seqs of (massmapper--raw-keymap map)
+   for seq being the key-seqs of (massmapper--raw-keymap map)
    using (key-bindings cmd)
-   as key = (massmapper--normalize (key-description vec))
+   as key = (massmapper--normalize (key-description seq))
+   as recipient = (massmapper--normalize
+                   (string-replace donor-mod recipient-mod key))
    when (and cmd
+             ;; Ignore menu-bar/tool-bar/tab-bar
+             (not (string-search "-bar>" key))
+             ;; Sometimes (key-description seq) evalutes to a key called "C-x (..*",
+             ;; a key called "ESC 3..9", etc.  Can't do anything with them, but all
+             ;; are bound to self-insert-command so it matters not.
+             (not (string-search ".." key))
              (string-search donor-mod key)
              (not (string-search recipient-mod key)))
-   do (let ((recipient (massmapper--normalize
-                        (string-replace donor-mod recipient-mod key))))
-        (if (massmapper--lookup map recipient t)
-            (and (> massmapper-debug-level 0)
-                 (message "User bound key, leaving it alone: %s in %S"
-                          recipient
-                          map))
-          (push (list :keydesc recipient
+   if (massmapper--lookup map recipient t)
+   do (and (> massmapper-debug-level 0)
+           (message "User bound key, leaving it alone: %s in %S"
+                    recipient
+                    map))
+   else collect (list :keydesc recipient
                       :cmd cmd
                       :map map
                       :reason reason
-                      :olddef nil)
-                actions)))
-   finally return actions))
+                      :olddef nil)))
 
 (defvar massmapper--reflected-maps-per-mod nil)
 
