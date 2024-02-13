@@ -105,7 +105,8 @@ results in a keymap."
   (while (symbolp map)
     (and (>= massmapper-debug-level 1)
          (local-variable-if-set-p map)
-         (warn "massmapper: Keymap is buffer-local, maybe redesign: %S" map))
+         (lwarn 'massmapper :warning
+                "Keymap is buffer-local, maybe redesign: %S" map))
     (setq map (symbol-value map)))
   (if (keymapp map)
       map
@@ -427,13 +428,16 @@ there'll be no problem."
           collect step
           and do (when (string-match-p massmapper--modifier-safe-re
                                        (substring step (length rootmod)))
-                   (error "Key contains other modifiers: %s" keydesc))
+                   (lwarn 'massmapper :error
+                          "Key contains multiple modifiers: %s" keydesc))
           else collect (concat rootmod step)
           and do (when (string-match-p massmapper--modifier-safe-re step)
-                   (error "Key contains other modifiers: %s" keydesc)))
+                   (lwarn 'massmapper :error
+                          "Key contains multiple modifiers: %s" keydesc)))
          " ")
-      (warn "massmapper--ensure-permachord probably shouldn't be called on: %s"
-            keydesc)
+      (lwarn 'massmapper :warning
+             "massmapper--ensure-permachord probably shouldn't be called on: %s"
+             keydesc)
       keydesc)))
 
 (defun massmapper--ensure-chordonce (keydesc)
@@ -592,11 +596,12 @@ Will not modify keydescs involving <tool-bar>, <menu-bar> or
     (if (numberp value)
         (prog1 nil
           (unless no-warn-numeric
-            (warn "Massmapper: lookup-key returned numeric value for %s in %S"
-                  key
-                  (if (symbolp map)
-                      map
-                    (help-fns-find-keymap-name map)))))
+            (lwarn 'massmapper :warning
+                   "lookup-key returned numeric value for %s in %S"
+                   key
+                   (if (symbolp map)
+                       map
+                     (help-fns-find-keymap-name map)))))
       ;; Seems to have been an oversight in upstream `keymap-lookup': it didn't
       ;; pass a keymap to `command-remapping'...
       (or (command-remapping value nil raw-map) value))))

@@ -19,7 +19,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.1.5
+;; Version: 0.1.6-pre
 ;; Keywords: convenience
 ;; Homepage: https://github.com/meedstrom/massmapper
 ;; Package-Requires: ((emacs "24.4") (dash "2.19.1") (compat "29.1.4.4"))
@@ -841,7 +841,8 @@ See `massmapper-homogenizing-winners' for explanation."
                            (member sibling-cmd winners-for-this-keymap)
                            (member this-key winners-for-this-keymap)
                            (member this-cmd winners-for-this-keymap)))))
-              (warn "Found a contradiction in massmapper-homogenizing-winners.")
+              (display-warning
+               'massmapper "Found a contradiction in massmapper-homogenizing-winners.")
               nil)
 
              ((or (member sibling-keydesc winners-for-this-keymap)
@@ -867,7 +868,8 @@ See `massmapper-homogenizing-winners' for explanation."
                            (member this-key winners)
                            (member this-cmd winners)))))
               ;; Leave it on the user to fix this mess.
-              (warn "Found a contradiction in massmapper-homogenizing-winners.")
+              (display-warning
+               'massmapper "Found a contradiction in massmapper-homogenizing-winners.")
               nil)
 
              ((or (member sibling-keydesc winners)
