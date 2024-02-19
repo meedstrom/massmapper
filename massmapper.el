@@ -19,7 +19,7 @@
 
 ;; Author:  <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.1.6-pre
+;; Version: 0.1.6
 ;; Keywords: convenience
 ;; Homepage: https://github.com/meedstrom/massmapper
 ;; Package-Requires: ((emacs "24.4") (dash "2.19.1") (compat "29.1.4.4"))
@@ -41,7 +41,6 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'help-fns) ;; help-fns-find-keymap-name
-(require 'map) ;; map-let
 
 ;; REVIEW: Verify that command-remappings apply
 
@@ -120,12 +119,11 @@ function simply returns its name."
       (cl-loop
        for item in massmapper--remap-record
        do
-       ;; (cl-destructuring-bind (&key keydesc cmd map reason olddef) item)
-       (map-let ((:keydesc keydesc) (:cmd cmd) (:map map) (:reason reason) (:olddef oldcmd)) item
+       (cl-destructuring-bind (&key keydesc cmd map reason olddef) item
          (let ((cmd-string (massmapper--pretty-print-def cmd))
                (oldcmd-string
-                (if oldcmd
-                    (concat "(was " (massmapper--pretty-print-def oldcmd)
+                (if olddef
+                    (concat "(was " (massmapper--pretty-print-def olddef)
                             ")")
                   "")))
            (push (list (sxhash item)
@@ -146,7 +144,7 @@ function simply returns its name."
       (if (member action massmapper--remap-record)
           (when (> massmapper-debug-level 1)
             (message "Massmapper already took this action: %S" action))
-        (map-let ((:keydesc keydesc) (:cmd cmd) (:map map)) action
+       (cl-destructuring-bind (&key keydesc cmd map &allow-other-keys) action
           (let ((raw-map (massmapper--raw-keymap map)))
             (when-let* ((conflict-prefix
                          (massmapper--key-seq-has-non-prefix-in-prefix
@@ -180,7 +178,7 @@ were unbound and will stay unbound."
   (interactive)
   (cl-loop
    for item in massmapper--remap-record
-   do (map-let ((:keydesc keydesc) (:map map) (:olddef olddef)) item
+   do (cl-destructuring-bind (&key keydesc map olddef &allow-other-keys) item
         (if (null olddef)
             (keymap-unset (massmapper--raw-keymap map) keydesc t)
           (keymap-set (massmapper--raw-keymap map) keydesc olddef)))
