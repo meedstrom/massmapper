@@ -29,10 +29,11 @@
 
 ;;; Code:
 
-(require 'dash)
-(require 'compat)
 (require 'cl-lib)
-(require 'subr-x)
+(require 'subr-x) ;; string-join, thread-first
+(require 'help-fns) ;; help-fns-find-keymap-name
+(require 'compat)
+(require 'dash)
 
 (defconst massmapper--ignore-keys-control-chars
   '("ESC" "C-["
@@ -538,7 +539,7 @@ Assumes KEYDESC was output by `key-description', which already
 normalizes some aspects of it!  Therefore, to fully sanitize a
 keydesc of unknown origin, do
 
-\(massmapper--normalize \(key-description \(key-parse WILD-KEYDESC))).
+\(massmapper--normalize \(key-description \(key-parse WILD-KEYDESC)))
 
 Will not modify keydescs involving <tool-bar>, <menu-bar> or
 <tab-bar>, because they have nonstandard formats."
@@ -601,7 +602,7 @@ Will not modify keydescs involving <tool-bar>, <menu-bar> or
                    key
                    (if (symbolp map)
                        map
-                     (help-fns-find-keymap-name map)))))
+                     (or (help-fns-find-keymap-name map) "unknown map")))))
       ;; Seems to have been an oversight in upstream `keymap-lookup': it didn't
       ;; pass a keymap to `command-remapping'...
       (or (command-remapping value nil raw-map) value))))

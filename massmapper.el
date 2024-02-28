@@ -17,9 +17,9 @@
 
 ;; This file is not part of GNU Emacs.
 
-;; Author:  <meedstrom91@gmail.com>
+;; Author: Martin Edström <meedstrom91@gmail.com>
 ;; Created: 2018-08-03
-;; Version: 0.1.6
+;; Version: 0.1.7-pre
 ;; Keywords: convenience
 ;; Homepage: https://github.com/meedstrom/massmapper
 ;; Package-Requires: ((emacs "24.4") (dash "2.19.1") (compat "29.1.4.4"))
@@ -34,13 +34,6 @@
 ;; (add-hook 'massmapper-keymap-found-hook #'massmapper-homogenize -50))
 
 ;;; Code:
-
-(require 'massmapper-lib)
-(require 'dash)
-(require 'compat)
-(require 'cl-lib)
-(require 'subr-x)
-(require 'help-fns) ;; help-fns-find-keymap-name
 
 ;; REVIEW: Verify that command-remappings apply
 
@@ -61,7 +54,8 @@
 ;;        A keyboard macro is represented as a string(!!!) or vector, a lambda
 ;;        is a list with the symbol lambda as car.
 
-
+(require 'massmapper-lib)
+
 ;;; Basics
 
 (defgroup massmapper nil
@@ -144,7 +138,7 @@ function simply returns its name."
       (if (member action massmapper--remap-record)
           (when (> massmapper-debug-level 1)
             (message "Massmapper already took this action: %S" action))
-       (cl-destructuring-bind (&key keydesc cmd map &allow-other-keys) action
+        (cl-destructuring-bind (&key keydesc cmd map &allow-other-keys) action
           (let ((raw-map (massmapper--raw-keymap map)))
             (when-let* ((conflict-prefix
                          (massmapper--key-seq-has-non-prefix-in-prefix
@@ -256,51 +250,61 @@ Suitable to hook on `window-buffer-change-functions' like this:
     ;; for this keymap composite.
     (unless (member composite-hash massmapper--known-keymap-composites)
       (push composite-hash massmapper--known-keymap-composites)
-      (let* ((named-maps (-uniq (-keep #'help-fns-find-keymap-name maps)))
-             (new-maps (-difference named-maps massmapper--known-keymaps)))
-        (setq new-maps (remove 'context-menu-mode-map new-maps))
-        ;; For whatever reason, (help-fns-find-keymap-name global-map) returns
-        ;; `widget-global-map'.  Try it!  Fortunately,
-        ;; (equal widget-global-map global-map) returns t, so it doesn't matter
-        ;; for most purposes, as edits to the raw value of one also affects the
-        ;; raw value of the other (keymap variables are weird that way).
-        ;; However, where we want to identify the keymap by e.g. membership in a
-        ;; list or with `equal', I expect it to take much more CPU time to
-        ;; compare their raw values instead of simply their symbols.  The user
-        ;; is likely to set options that refer to `global-map'.  Therefore,
-        ;; ensure we use that name everywhere by prepopulating
-        ;; `massmapper--known-keymaps' with `global-map' and removing
-        ;; `widget-global-map' in this step.  As a bonus, user won't need to see
-        ;; and be puzzled by `widget-global-map' in M-x massmapper-list-remaps.
-        ;; These shenanigans wouldn't be necessary if keymap values contained a
-        ;; canonical symbol name (and we could eliminate the expensive function
-        ;; `help-fns-find-keymap-name'), but IDK if upstream would like that.
-        (setq new-maps (remove 'widget-global-map new-maps))
+      ;; FIXME: `help-fns-find-keymap-name' does not find ess-r-mode-map!  And
+      ;; some other maps.  I guess we cannot rely on the map name as an
+      ;; identifier; will simply have to `sxhash' the value, maybe even record
+      ;; (KEYMAP HASHES NAME-MAYBE) in a table.
+      ;; Also, it seems possible we could actually figure out the name thanks
+      ;; to this table in cases where `help-fns-find-keymap-name' fails.
+      (let ((named-maps (mapcar #'help-fns-find-keymap-name maps)))
+        (when (member nil named-maps)
+          (message "Massmapper: Could not identify a keymap in buffer %s%s"
+                   (buffer-name) ". Don't worry, a fix is coming.")
+          (setq named-maps (delq nil named-maps)))
+        (let ((new-maps (-difference named-maps massmapper--known-keymaps)))
+          (setq new-maps (remove 'context-menu-mode-map new-maps))
+          ;; For whatever reason, (help-fns-find-keymap-name global-map) returns
+          ;; `widget-global-map'.  Try it!  Fortunately,
+          ;; (equal widget-global-map global-map) returns t, so it doesn't matter
+          ;; for most purposes, as edits to the raw value of one also affects the
+          ;; raw value of the other (keymap variables are weird that way).
+          ;; However, where we want to identify the keymap by e.g. membership in a
+          ;; list or with `equal', I expect it to take much more CPU time to
+          ;; compare their raw values instead of simply their symbols.  The user
+          ;; is likely to set options that refer to `global-map'.  Therefore,
+          ;; ensure we use that name everywhere by prepopulating
+          ;; `massmapper--known-keymaps' with `global-map' and removing
+          ;; `widget-global-map' in this step.  As a bonus, user won't need to see
+          ;; and be puzzled by `widget-global-map' in M-x massmapper-list-remaps.
+          ;; These shenanigans wouldn't be necessary if keymap values contained a
+          ;; canonical symbol name (and we could eliminate the expensive function
+          ;; `help-fns-find-keymap-name'), but IDK if upstream would like that.
+          (setq new-maps (remove 'widget-global-map new-maps))
 
-        ;; Rare situation, and maybe it's only iedit that has this hack, but the
-        ;; default value of `iedit-occurrence-keymap' is the symbol
-        ;; `iedit-occurrence-keymap-default', and we should work strictly with
-        ;; the latter.  I assume we should do likewise all similar cases, so
-        ;; just recursively evaluate all such "indirect variables".  Especially
-        ;; in that example, it's appropriate since it additionally has the odd
-        ;; behavior that the former is a buffer-local variable that sometimes
-        ;; actually evaluates to a (buffer-local) keymap instead of a symbol,
-        ;; which is why it's sometimes picked up by `current-active-maps'.  Were
-        ;; Elisp statically typed, we wouldn't ever have to watch for strange
-        ;; usages like this.
-        (setq new-maps
-              (cl-loop for map in new-maps
-                       collect (cl-loop
-                                until (keymapp (default-value map))
-                                do (setf map (default-value map))
-                                finally return map)))
-        ;; After the above de-hack, we must re-check.
-        (setq new-maps (-difference new-maps massmapper--known-keymaps))
+          ;; Rare situation, and maybe it's only iedit that has this hack, but the
+          ;; default value of `iedit-occurrence-keymap' is the symbol
+          ;; `iedit-occurrence-keymap-default', and we should work strictly with
+          ;; the latter.  I assume we should do likewise all similar cases, so
+          ;; just recursively evaluate all such "indirect variables".  Especially
+          ;; in that example, it's appropriate since it additionally has the odd
+          ;; behavior that the former is a buffer-local variable that sometimes
+          ;; actually evaluates to a (buffer-local) keymap instead of a symbol,
+          ;; which is why it's sometimes picked up by `current-active-maps'.  Were
+          ;; Elisp statically typed, we wouldn't ever have to watch for strange
+          ;; usages like this.
+          (setq new-maps
+                (cl-loop for map in new-maps
+                         collect (cl-loop
+                                  until (keymapp (default-value map))
+                                  do (setf map (default-value map))
+                                  finally return map)))
+          ;; After the above de-hack, we must re-check.
+          (setq new-maps (-difference new-maps massmapper--known-keymaps))
 
-        (when new-maps
-          (setq massmapper--known-keymaps
-                (append new-maps massmapper--known-keymaps))
-          (run-hooks 'massmapper-keymap-found-hook))))))
+          (when new-maps
+            (setq massmapper--known-keymaps
+                  (append new-maps massmapper--known-keymaps))
+            (run-hooks 'massmapper-keymap-found-hook)))))))
 
 
 ;;; Cleaning
