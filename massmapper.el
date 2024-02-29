@@ -258,8 +258,8 @@ Suitable to hook on `window-buffer-change-functions' like this:
       ;; to this table in cases where `help-fns-find-keymap-name' fails.
       (let ((named-maps (mapcar #'help-fns-find-keymap-name maps)))
         (when (member nil named-maps)
-          (message "Massmapper: Could not identify a keymap in buffer %s%s"
-                   (buffer-name) ". Don't worry, a fix is coming.")
+          ;; (message "Massmapper: Could not identify a keymap in buffer %s%s"
+          ;; (buffer-name) ". Don't worry, a fix is coming.")
           (setq named-maps (delq nil named-maps)))
         (let ((new-maps (-difference named-maps massmapper--known-keymaps)))
           (setq new-maps (remove 'context-menu-mode-map new-maps))
