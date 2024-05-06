@@ -187,7 +187,7 @@ Unfortunately when Emacs freezes, nothing else than =C-g= will get it out of tha
 
 I'm sure that many people through the ages have tried in good faith to bind =keyboard-quit= to =<escape>= or some such representative of modernity, only to give up when they saw that the result wasn't consistent.
 
-I surmise we can't remove the =C-g= behavior from =C-g= itself because of TTYs, but it should be possible to add /more/ keyboard interrupts than just =C-g=.  Emacs would probably need a compile-time option, which could maybe become a startup parameter or Lisp setting.
+In fact, Emacs has a function =set-quit-char= to change the quit character, but it sounds like it has been broken since Emacs merged the multi-tty branch in 2007: https://lists.gnu.org/archive/html/emacs-devel/2008-09/msg00638.html
 
 There is nothing Massmapper can do from within Emacs Lisp.  If you really want to move the =C-g= behavior, you could tell your window manager or [[https://github.com/kmonad/kmonad][kmonad]] to send a real =C-g= in place of =s-g= or whichever key you prefer.  That gets a bit crazy if it's the Escape key you want to give this behavior... because that breaks other apps.  You would need a WM that's aware of whether Emacs is in focus or not.
 
