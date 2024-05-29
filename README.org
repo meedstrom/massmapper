@@ -67,6 +67,14 @@ and any or all of (experimental):
 - =massmapper-define-altsuper-like-ctlmeta=
 - =massmapper-define-hypersuper-like-ctlmeta=
 
+These are all just very thin wrappers for =massmapper--define-a-like-b-everywhere=, which you might be able to use in new and interesting ways.  For example, it's /kind of/ possible to move C-x to the more ergonomic M-a:
+
+#+begin_src elisp
+(massmapper--define-a-like-b-everywhere "M-a " "C-x ")
+#+end_src
+
+but at this time, that works better if you also "homogenize", see below.
+
 ** Homogenize
 For those of you coming here from [[https://github.com/meedstrom/deianira][Deianira]], the original reason I made this library:
 
