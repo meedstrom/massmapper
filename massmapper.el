@@ -984,8 +984,11 @@ more at:  https://github.com/meedstrom/deianira"
   :global t
   :group 'massmapper
   (if massmapper-mode
-      (add-hook 'window-buffer-change-functions
-                #'massmapper-record-keymap-maybe -70)
+      (progn
+        (when after-init-time
+          (massmapper-record-keymap-maybe))
+        (add-hook 'window-buffer-change-functions
+                  #'massmapper-record-keymap-maybe -70))
     (remove-hook 'window-buffer-change-functions
                  #'massmapper-record-keymap-maybe)))
 
