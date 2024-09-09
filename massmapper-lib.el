@@ -74,12 +74,6 @@ s- preceded by a dash (i.e. \"-s-\"), and our second search
 starts past the first dash.  However, it's fine if you cut the
 string and start a new search on the cut string.")
 
-(define-obsolete-variable-alias
-  'massmapper--modifier-regexp 'massmapper--modifier-re "2023-11-20")
-
-(define-obsolete-variable-alias
-  'massmapper--modifier-regexp-safe 'massmapper--modifier-safe-re "2023-11-20")
-
 (defun massmapper--raw-keymap* (map)
   "If MAP is a keymap, return it; if a symbol, evaluate first."
   (if (keymapp map)

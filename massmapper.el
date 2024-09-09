@@ -543,7 +543,7 @@ put in any keys that don't involve C-m or C-i."
                  :cmd cmd
                  :map map
                  :reason "User specified in massmapper-Cm-Ci-override"
-                 :olddef (massmapper--lookup map key))))
+                 :olddef (massmapper--lookup raw-map key))))
 
 ;; Note that the following two commands come into play less often than you
 ;; might think.
@@ -727,10 +727,10 @@ Control -- email or file a GitHub issue if this interests you."
   :type '(repeat string))
 
 (defconst massmapper--homogenize-ignore-regexp
+  (regexp-opt massmapper--ignore-keys-irrelevant)
   "Regexp matching keys to skip homogenizing.
 These include keys such as <help> which simply clutter up the
-output of \\[massmapper-list-remaps]."
-  (regexp-opt massmapper--ignore-keys-irrelevant))
+output of \\[massmapper-list-remaps].")
 
 ;; NOTE: must return either nil or a list
 (defun massmapper--how-homogenize-key-in-keymap (this-key this-cmd keymap)
