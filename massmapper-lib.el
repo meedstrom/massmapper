@@ -1,6 +1,6 @@
 ;;; massmapper-lib.el -- Library for deianira and massmapper -*- lexical-binding: t; nameless-current-name: "massmapper"; -*-
 
-;; Copyright (C) 2018-2023 Martin Edström
+;; Copyright (C) 2018-2023, 2025 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -358,13 +358,14 @@ KEYMAP is the keymap in which to look."
   (let ((steps (split-string keydesc " "))
         (ret nil))
     (when (> (length steps) 1)
-      ;; TODO: don't use dotimes, it's very un-Lispy
+      ;; REVIEW: there's prolly a more Lispy approach than dotimes
       (dotimes (i (- (length steps) 1))
         (let* ((subseq (string-join (-take (1+ i) steps) " "))
                (cmd? (massmapper--lookup keymap subseq t)))
           (and cmd?
                (or (commandp cmd?)
                    (and (listp cmd?)
+                        ;; FIXME: emacs 30+ may need `interpreted-function-p'
                         (member (car cmd?) '(closure lambda))))
                (push subseq ret))))
       (car ret))))
@@ -573,7 +574,8 @@ Will not modify keydescs involving <tool-bar>, <menu-bar> or
 ;; (keymap-lookup message-mode-map "<tool-bar> s-<Forward in history>")
 (cl-defun massmapper--lookup (map key &optional no-warn-numeric no-warn-invalid)
   "Variant of Emacs 29 `keymap-lookup', with different behavior."
-  (declare (compiler-macro (lambda (form) (keymap--compile-check key) form)))
+  ;; this compiler macro seems to rely on 29
+  ;; (declare (compiler-macro (lambda (form) (keymap--compile-check key) form)))
   (unless no-warn-invalid
     ;; Instead of signaling an error, prefer to keep trying to bind most
     ;; bindings, since most attempts usually work.  Giving up at the first
